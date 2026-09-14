@@ -8,6 +8,10 @@ updates:
       - "dependencies"
     commit-message:
       prefix: "chore"
+    groups:
+      actions:
+        patterns:
+          - "*"
   - package-ecosystem: "npm"
     directory: "/"
     schedule:
