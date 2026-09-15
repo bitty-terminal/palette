@@ -20,6 +20,11 @@
 -- support (`bitty.ui.mount`/`update`) is not yet in the `bitty` Lua bridge;
 -- the plugin degrades to command-only mode until it lands. See the README
 -- "Known gaps" section.
+--
+-- Every host UI call is guarded: mount denial or scene-validation failure at
+-- activation leaves the palette in command-only mode instead of crashing the
+-- generation, and a rejected update keeps the last successfully presented
+-- scene instead of propagating to the command caller or event dispatcher.
 
 local filter = require("palette.filter")
 local scene = require("palette.scene")
@@ -53,18 +58,32 @@ local function query()
 end
 
 -- The overlay block is mounted once during activation because `ui.mount` is a
--- registration-time call. Toggling and focus changes update it. When the host
--- bridge does not yet expose `bitty.ui`, the plugin runs in command-only mode.
+-- registration-time call. Mounting is capability-gated and validates the
+-- scene, so the call is guarded: a failure leaves the palette in command-only
+-- mode instead of crashing activation. When the host bridge does not yet
+-- expose `bitty.ui`, the plugin also runs in command-only mode.
 local overlay = nil
 if bitty.ui ~= nil and type(bitty.ui.mount) == "function" then
-  overlay = bitty.ui.mount("overlay", scene.empty())
+  local ok, handle = pcall(bitty.ui.mount, "overlay", scene.empty())
+  if ok and handle ~= nil then
+    overlay = handle
+  end
+end
+
+-- Present `node` in the overlay. Returns false when no block is mounted or the
+-- host rejects the update; in both cases the previous scene (or no scene)
+-- stays on screen and the failure never reaches the caller.
+local function render(node)
+  if overlay == nil then
+    return false
+  end
+  local ok, updated = pcall(bitty.ui.update, overlay, node)
+  return ok and updated ~= false
 end
 
 local function refresh()
   local filtered = filter.filter(entries(), query())
-  if overlay ~= nil then
-    bitty.ui.update(overlay, scene.list(filtered))
-  end
+  render(scene.list(filtered))
   return filtered
 end
 
@@ -72,13 +91,17 @@ bitty.commands.register({
   id = "toggle",
   title = "Palette: toggle",
   description = "Toggle the command palette overlay and show the filtered entry list.",
+  args_schema = { type = "object", properties = {}, additionalProperties = false },
+  result_schema = { type = "integer", minimum = 0, maximum = filter.MAX_ENTRIES },
   run = function(_args)
     toggled = not toggled
-    local filtered = refresh()
-    if not toggled and overlay ~= nil then
-      bitty.ui.update(overlay, scene.empty())
+    if not toggled then
+      -- Closing presents the empty scene in a single render; the filtered
+      -- list is not recomputed because nothing is displayed.
+      render(scene.empty())
+      return 0
     end
-    return #filtered
+    return #refresh()
   end,
 })
 
