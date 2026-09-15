@@ -28,7 +28,7 @@ manifest `[compat]` ranges.
 | ------------------------------- | ----------------------------------------------------------------------------------------------- |
 | `bitty-plugin.toml`             | Static manifest: identity, compatibility, capability requests, and lazy triggers.               |
 | `lua/palette/init.lua`          | Entry point evaluated once per activation; registers the toggle command and mounts the overlay. |
-| `lua/palette/filter.lua`        | Bounded, host-free filtering and text-truncation policy.                                        |
+| `lua/palette/filter.lua`        | Bounded, host-free input scanning, filtering, and text-truncation policy.                       |
 | `lua/palette/scene.lua`         | Declarative `List`/`Text` overlay composition.                                                  |
 | `tests/`                        | Lua 5.4 behavior suite, LuaLS conformance, and the SDK manifest-lint wrapper.                   |
 | `scripts/validate-manifest.mjs` | Transitional manifest check; `bitty-plugin-lint` (R-SDK-2) is authoritative.                    |
@@ -40,11 +40,23 @@ The plugin keeps the bundled palette behavior and bounds:
 
 - case-insensitive substring filtering over a bounded entry list, at most
   `128` displayed entries (`PALETTE_MAX_ENTRIES`);
+- candidate input bounded to `1024` examined entries per filter pass
+  (`MAX_INPUT`); oversized `entries` settings are cut at the bound and the cut
+  is reported through the filter stats (`filter.filter` returns
+  `{ scanned, truncated }` as its second value);
+- non-table `entries` settings fail closed to an empty list;
 - query truncated to `128` characters, display text truncated to the host
   overlay text bound `128` (`MAX_OVERLAY_TEXT_LEN`) at a UTF-8 code-point
   boundary;
 - overlay content composed as a single declarative `List` of `Text` rows
   (`Text`, `Row`, `Column`, `List` are the only Plugin API v1 node kinds);
+- host UI calls are `pcall`-guarded: a denied or failed `bitty.ui.mount`
+  degrades to command-only mode, and a rejected `bitty.ui.update` keeps the
+  last successfully presented scene instead of throwing at the command caller
+  or the `focus.changed` dispatcher;
+- `toggle` returns the number of displayed entries (`0` when closing) and
+  declares a closed empty-object `args_schema` plus an integer `result_schema`
+  matching the returned count;
 - refresh on `focus.changed` while the palette is open.
 
 ## Capability difference from the bundled realization
@@ -66,8 +78,8 @@ follow-up; see "Known gaps".
   (`crates/bitty-lua/src/host.rs`) implements commands, events, settings,
   store, terminal snapshots, notifications, and timers, but not
   `bitty.ui.mount`/`bitty.ui.update`. The plugin activates in command-only mode
-  and returns the filtered entry count until that surface lands. Tracked as a
-  follow-up task in `bitty`.
+  and returns the number of displayed entries until that surface lands.
+  Tracked as a follow-up task in `bitty`.
 - **Entry source.** The accepted v1 surface exposes no command-registry
   enumeration and no `PickerProvider` (the Plugin Reuse and Provider Ecology
   RFC is draft/post-1.0). The palette reads its bounded entry list and query
