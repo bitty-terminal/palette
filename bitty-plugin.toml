@@ -11,7 +11,7 @@
 [plugin]
 id = "bitty-terminal.palette"
 name = "Palette"
-version = "0.1.0"
+version = "0.0.1"
 description = "Command palette and picker UI via overlay slot, declarative primitives only"
 license = "MIT"
 

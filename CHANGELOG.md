@@ -18,6 +18,9 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Realign package version `0.1.0` → `0.0.1` per bitty-docs decision DIR-019
+  (everything pre-1.0-stable stays on the `0.0.x` line). No behavior change;
+  no published tag or release existed, so no published artifact is downgraded.
 - Requests `ui.rich` in addition to `ui.overlay`: the accepted Plugin API v1
   Lua overlay path (`bitty.ui.mount`) requires both, unlike the bundled Rust
   realization which used the lower-level Panel Runtime overlay path.
