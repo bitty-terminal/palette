@@ -8,7 +8,7 @@
   neither owns this repository's Git or CarryCtx state.
 - Enter this repository before running Git, CarryCtx, validation, or toolchain
   commands.
-- `bitty-docs` and `bitty-plugins-docs` are the canonical sources for plugin
+- [bitty-docs](https://github.com/bitty-terminal/bitty-docs) and [bitty-plugins-docs](https://github.com/bitty-terminal/bitty-plugins-docs) are the canonical sources for plugin
   architecture, API, security, packaging, compatibility, and public-behavior
   contracts. This repository must not invent capabilities, lifecycle
   semantics, or release policy.
@@ -26,7 +26,7 @@
   authority; no install-time code execution. A wider request needs an
   explicitly scoped task and a reviewed security note; never widen silently.
 - Origin: this package is the independent first-party realization created by
-  the OQ-053 bundled-plugin split decision (`bitty` `CTX-0397`). The accepted
+  the OQ-053 bundled-plugin split decision ([bitty](https://github.com/bitty-terminal/bitty) `CTX-0397`). The accepted
   Lua overlay path requires `ui.rich` in addition to the bundled
   realization's `ui.overlay`; that difference is recorded, not a capability
   widening done silently.
@@ -81,8 +81,7 @@
 
 ## Toolchain policy
 
-- Never use `npm`, `npx`, or `yarn` here. JavaScript execution and package
-  management use `bun` / `bunx --bun` exclusively.
+- JavaScript runs on `bun` (pinned version in the justfile).
 - Never invoke formatters, linters, or parsers directly by name. Run gates
   through the justfile: `just check`, `just fmt`, `just lint`, `just manifest`,
   `just lua`, `just test`.
@@ -105,6 +104,7 @@
 ## Verification and handoff
 
 - Keep edits inside the active CarryCtx scope and preserve unrelated work.
+- Ephemeral scratch goes under `/tmp/bitty/`; durable material goes under repo-local `recording/` (gitignored).
 - Run `just check` plus `actionlint` on affected workflows and
   `gitleaks detect --source .` before concluding a change.
 - Update this guide, `README.md`, `CHANGELOG.md`, and affected canonical docs
