@@ -1,4 +1,4 @@
-# Contributing to bitty-plugin-template
+# Contributing to palette
 
 This guide is for contributors maintaining this template repository. The
 repository is documentation-first and pre-implementation: everything here is
