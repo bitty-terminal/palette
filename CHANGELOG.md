@@ -20,6 +20,13 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- Pin the repository toolchain metadata: `packageManager` is now `bun@1.4.2`,
+  [CONTRIBUTING.md](CONTRIBUTING.md) documents the contributor-branch
+  convention (`ctx-XXXX/<type>-<slug>`; external contributors use
+  `<handle>/<type>-<slug>`) and the delivery lifecycle, [SECURITY.md](SECURITY.md)
+  follows the canonical reporting structure, and `.gitattributes` normalizes
+  text files to LF.
+
 - Switch manifest validation to the authoritative `bitty-plugin-lint`
   (bitty-plugin-sdk, R-SDK-2), commit-pinned in `package.json` and `bun.lock`
   (`CTX-0005`). The justfile gains `just install`

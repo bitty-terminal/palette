@@ -1,9 +1,8 @@
 # Security Policy
 
-This document is proposed repository governance scaffolding. It describes how
-security reports for this repository are handled. Normative product security
-requirements live in the canonical `bitty-docs` security corpus and take
-precedence over anything stated here.
+This document describes how security reports for the `palette` repository are
+handled. Normative product security requirements live in the canonical
+`bitty-docs` security corpus and take precedence over anything stated here.
 
 ## Supported Versions
 
@@ -26,7 +25,7 @@ When reporting, please include as much of the following as possible:
 
 - A description of the vulnerability and its potential impact.
 - Steps to reproduce, or a proof of concept.
-- Affected files, templates, manifests, or generated outputs.
+- Affected files, Lua modules, manifests, or generated outputs.
 - Any known mitigations or workarounds.
 
 ## Disclosure Policy
@@ -41,11 +40,19 @@ Reports are handled through coordinated disclosure:
 
 ## Response Expectations
 
-The targets below are proposed policy and take effect once this repository
-accepts them:
+The targets below take effect once this repository accepts them:
 
 - Acknowledge a new advisory within 5 business days.
 - Provide a status update at least every 14 calendar days while a report is
   open.
 - Publish the advisory after a fixed version is available, or after 90 days if
   no fix is feasible, whichever comes first.
+
+## Scope Note
+
+The plugin requests only `ui.rich` and `ui.overlay`: it composes declarative
+overlay scenes and holds no filesystem, process, network, clipboard, terminal
+input, or persistent-state authority, and it executes no install-time code.
+Findings that contradict those boundaries — including a manifest change that
+would widen the capability set, unbounded input handling, or an escape from
+the declarative UI primitives — are security-relevant defects.
