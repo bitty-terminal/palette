@@ -17,7 +17,7 @@ production use.
 ## Reporting a Vulnerability
 
 Report security vulnerabilities privately by opening a
-[GitHub Security Advisory](https://github.com/bitty-terminal/bitty-plugin-template/security/advisories/new).
+[GitHub Security Advisory](https://github.com/bitty-terminal/palette/security/advisories/new).
 
 Do not report security vulnerabilities through public GitHub issues, pull
 requests, or discussion channels.

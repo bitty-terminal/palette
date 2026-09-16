@@ -15,6 +15,8 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   declarative `List`/`Text` overlay composition (`lua/palette/scene.lua`), and
   the activation entry point (`lua/palette/init.lua`).
 - Lua 5.4 behavior suite, LuaLS conformance, and SDK manifest-lint wrapper.
+- Adopt the canonical `.editorconfig` baseline (`CTX-0023` slice); the
+  repository-metadata baseline guide and ADR-0011 remain Proposed.
 
 ### Changed
 
@@ -42,5 +44,9 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `toggle` close no longer renders twice: closing presents the empty scene in
   a single render and reports `0` displayed entries instead of rendering the
   filtered list first (M-PAL-02).
+- Fix template-identity artifacts copied from `bitty-plugin-template`: the
+  CodeQL configuration `name` (`.github/codeql/codeql-config.yml`), the
+  `CONTRIBUTING.md` title, the `SECURITY.md` advisory URL, and the issue
+  template descriptions.
 
 [Unreleased]: https://github.com/bitty-terminal/palette/commits/main

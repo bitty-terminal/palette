@@ -1,6 +1,6 @@
 ---
 name: Feature request
-about: Suggest an improvement to bitty-plugin-template
+about: Suggest an improvement to the palette plugin
 title: "[Feature] "
 labels: enhancement
 assignees: ""

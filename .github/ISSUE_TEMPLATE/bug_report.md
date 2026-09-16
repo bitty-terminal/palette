@@ -1,6 +1,6 @@
 ---
 name: Bug report
-about: Report a defect in bitty-plugin-template
+about: Report a defect in the palette plugin
 title: "[Bug] "
 labels: bug
 assignees: ""

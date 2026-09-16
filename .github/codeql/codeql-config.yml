@@ -1,4 +1,4 @@
-name: "CodeQL config for bitty-plugin-template"
+name: "CodeQL config for palette"
 
 queries:
   - uses: security-and-quality
