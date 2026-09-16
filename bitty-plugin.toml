@@ -4,9 +4,9 @@
 # `docs/specifications/plugin-platform-rfc.md` (OQ-012). The plugin manager and
 # the host parse this file independently before any plugin code runs.
 #
-# `just manifest` validates this file; `bitty-plugin-lint` from
-# bitty-plugin-sdk (R-SDK-2) is the authoritative check against the same
-# accepted contract.
+# `just manifest` validates this file with the authoritative `bitty-plugin-lint`
+# from bitty-plugin-sdk (R-SDK-2), pinned by commit in `package.json` and
+# `bun.lock`. Run `just install` once to materialize it.
 
 [plugin]
 id = "bitty-terminal.palette"

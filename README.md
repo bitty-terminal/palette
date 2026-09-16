@@ -24,15 +24,16 @@ manifest `[compat]` ranges.
 
 ## Layout
 
-| Path                            | Purpose                                                                                         |
-| ------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `bitty-plugin.toml`             | Static manifest: identity, compatibility, capability requests, and lazy triggers.               |
-| `lua/palette/init.lua`          | Entry point evaluated once per activation; registers the toggle command and mounts the overlay. |
-| `lua/palette/filter.lua`        | Bounded, host-free input scanning, filtering, and text-truncation policy.                       |
-| `lua/palette/scene.lua`         | Declarative `List`/`Text` overlay composition.                                                  |
-| `tests/`                        | Lua 5.4 behavior suite, LuaLS conformance, and the SDK manifest-lint wrapper.                   |
-| `scripts/validate-manifest.mjs` | Transitional manifest check; `bitty-plugin-lint` (R-SDK-2) is authoritative.                    |
-| `justfile`                      | Quality gates with pinned tool versions.                                                        |
+| Path                     | Purpose                                                                                         |
+| ------------------------ | ----------------------------------------------------------------------------------------------- |
+| `bitty-plugin.toml`      | Static manifest: identity, compatibility, capability requests, and lazy triggers.               |
+| `lua/palette/init.lua`   | Entry point evaluated once per activation; registers the toggle command and mounts the overlay. |
+| `lua/palette/filter.lua` | Bounded, host-free input scanning, filtering, and text-truncation policy.                       |
+| `lua/palette/scene.lua`  | Declarative `List`/`Text` overlay composition.                                                  |
+| `tests/`                 | Lua 5.4 behavior suite and LuaLS conformance.                                                   |
+| `package.json`           | Pinned dev dependencies: the authoritative `bitty-plugin-lint` by commit, plus tooling.         |
+| `bun.lock`               | Locked dependency graph installed by `just install`.                                            |
+| `justfile`               | Quality gates with pinned tool versions.                                                        |
 
 ## Behavior
 
@@ -89,17 +90,23 @@ follow-up; see "Known gaps".
 
 ## Development
 
-Run the same gate CI runs:
+Install the pinned dependencies once, then run the same gate CI runs:
 
 ```sh
-bun install --frozen-lockfile
+just install   # bun install --frozen-lockfile; the only network step
 just check
 ```
 
-`just check` runs Markdown lint, Prettier format check, the transitional
-manifest validator, the pinned Lua parser, and the Lua/LuaLS/SDK-manifest test
-suites. `lua5.4` is required for the behavior suite; `lua-language-server` and
-`bitty-plugin-lint` are optional and their checks skip with exit 0 when absent.
+`just install` materializes `bitty-plugin-lint` (bitty-plugin-sdk, pinned by
+commit in `package.json` and `bun.lock`) and `luaparse`; every gate then runs
+offline and fails closed when the dependency is absent. `just manifest`
+validates `bitty-plugin.toml` with the authoritative SDK linter against the
+accepted contract in bitty-docs
+`docs/specifications/plugin-platform-rfc.md` (file name, identity,
+compatibility, capability closed set, lazy triggers, hard limits). `just lua`
+parses the Lua modules with the pinned `luaparse` 0.3.1 grammar. `lua5.4` is
+required for the behavior suite; `lua-language-server` is optional and
+`just test-luals` skips with exit 0 when absent.
 
 ## Install
 

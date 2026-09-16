@@ -14,18 +14,34 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Pure-Lua palette: bounded filtering/truncation policy (`lua/palette/filter.lua`),
   declarative `List`/`Text` overlay composition (`lua/palette/scene.lua`), and
   the activation entry point (`lua/palette/init.lua`).
-- Lua 5.4 behavior suite, LuaLS conformance, and SDK manifest-lint wrapper.
+- Lua 5.4 behavior suite and LuaLS conformance.
 - Adopt the canonical `.editorconfig` baseline (`CTX-0023` slice); the
   repository-metadata baseline guide and ADR-0011 remain Proposed.
 
 ### Changed
 
+- Switch manifest validation to the authoritative `bitty-plugin-lint`
+  (bitty-plugin-sdk, R-SDK-2), commit-pinned in `package.json` and `bun.lock`
+  (`CTX-0005`). The justfile gains `just install`
+  (`bun install --frozen-lockfile`) and a fail-closed `just deps` guard;
+  `just manifest` now runs `bun run bitty-plugin-lint bitty-plugin.toml`, and
+  `just check` runs offline once the dependencies are installed. `luaparse`
+  becomes an installed devDependency so the Lua parser gate also runs offline.
 - Realign package version `0.1.0` → `0.0.1` per bitty-docs decision DIR-019
   (everything pre-1.0-stable stays on the `0.0.x` line). No behavior change;
   no published tag or release existed, so no published artifact is downgraded.
 - Requests `ui.rich` in addition to `ui.overlay`: the accepted Plugin API v1
   Lua overlay path (`bitty.ui.mount`) requires both, unlike the bundled Rust
   realization which used the lower-level Panel Runtime overlay path.
+
+### Removed
+
+- Delete the vendored transitional `scripts/validate-manifest.mjs`; the pinned
+  SDK linter is now the single source of manifest validation (`CTX-0005`).
+- Delete the redundant `tests/check-manifest-lint.mjs` wrapper and its
+  `just test-manifest` recipe, which skipped with exit 0 when
+  `bitty-plugin-lint` was undiscoverable; the fail-closed `just manifest` gate
+  replaces it.
 
 ### Fixed
 

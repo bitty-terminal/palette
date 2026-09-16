@@ -21,13 +21,14 @@ scaffold itself is accepted.
 
 ## Prerequisites
 
-Toolchain expectations (version pins live exclusively in the justfile and are
-mirrored by [package.json](package.json); never invoke formatters or linters
-by name):
+Toolchain expectations (dependency versions are pinned in
+[package.json](package.json) and locked in `bun.lock`; never invoke formatters
+or linters by name):
 
 - `just` — command runner owning all quality-gate invocations.
-- `bun` / `bunx --bun` — JavaScript execution and package management. Never
-  use `npm`, `npx`, or `yarn` in any Bitty repository.
+- `bun` / `bun run <bin>` — JavaScript execution and package management; the
+  justfile invokes installed tools as `bun run <bin>`. Never use `npm`, `npx`,
+  or `yarn` in any Bitty repository.
 - `markdownlint-cli2` — Markdown linting, configured by
   [.markdownlint-cli2.jsonc](.markdownlint-cli2.jsonc).
 - `prettier` — formatting checks across the repository.
@@ -41,7 +42,7 @@ No build, test, or generation steps exist in this repository yet.
 ## Development setup
 
 1. Enter this repository before running Git, CarryCtx, or toolchain commands.
-2. Install pinned development dependencies: `bun install`.
+2. Install pinned development dependencies: `just install`.
 3. Enable Git hooks: `just hooks-install`.
 4. Run all quality gates: `just check` (Markdown lint plus Prettier format
    check; CI runs the same aggregate target).
