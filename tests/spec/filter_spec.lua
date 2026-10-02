@@ -4,8 +4,9 @@ local function run(context)
   local tap = context.tap
   local filter = require("palette.filter")
 
-  -- Output/query/text bounds mirror the bundled Rust realization; the input
-  -- bound is the palette-local untrusted-input policy.
+  -- Output/query/text bounds are this plugin's envelope (carried over from
+  -- the removed bundled Rust realization); the input bound is the
+  -- palette-local untrusted-input policy.
   tap.equal(filter.MAX_ENTRIES, 128, "MAX_ENTRIES")
   tap.equal(filter.MAX_QUERY_CHARS, 128, "MAX_QUERY_CHARS")
   tap.equal(filter.MAX_TEXT_CHARS, 128, "MAX_TEXT_CHARS")

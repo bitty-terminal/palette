@@ -38,8 +38,14 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (everything pre-1.0-stable stays on the `0.0.x` line). No behavior change;
   no published tag or release existed, so no published artifact is downgraded.
 - Requests `ui.rich` in addition to `ui.overlay`: the accepted Plugin API v1
-  Lua overlay path (`bitty.ui.mount`) requires both, unlike the bundled Rust
+  Lua overlay path (`bitty.ui.mount`) requires both, unlike the former bundled Rust
   realization which used the lower-level Panel Runtime overlay path.
+- Reframe the palette envelope citations (`lua/palette/filter.lua`,
+  `lua/palette/init.lua`, `README.md`, manifest and test comments): this
+  package is the authoritative realization, and the historical bundled Rust
+  realization (`crates/bitty-runtime/src/palette.rs`) was removed from `bitty`
+  by PR #1611 (commit `67cdcc14`). Comment and prose only; no behavior change
+  (`CTX-0008`).
 
 ### Removed
 

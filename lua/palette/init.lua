@@ -7,11 +7,12 @@
 --
 -- Accepted surface: Plugin API v1 Lua Surface RFC (ADR 0009). Capabilities
 -- requested in `bitty-plugin.toml` are `ui.rich` (declarative UI mount) and
--- `ui.overlay` (the overlay slot). The bundled Rust realization declared only
--- `ui.overlay` because it used the lower-level Panel Runtime overlay path; the
--- accepted Lua overlay path (`bitty.ui.mount`) additionally requires
--- `ui.rich`, so this independent package declares both. This is a recorded,
--- intentional difference from the bundled manifest.
+-- `ui.overlay` (the overlay slot). The historical bundled Rust realization
+-- (since removed from `bitty`) declared only `ui.overlay` because it used the
+-- lower-level Panel Runtime overlay path; the accepted Lua overlay path
+-- (`bitty.ui.mount`) additionally requires `ui.rich`, so this independent
+-- package declares both. This is a recorded, intentional difference from the
+-- former bundled manifest.
 --
 -- v1 data adapter: the accepted surface exposes no command-registry
 -- enumeration and no `PickerProvider` (the Plugin Reuse and Provider Ecology

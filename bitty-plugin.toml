@@ -16,7 +16,7 @@ description = "Command palette and picker UI via overlay slot, declarative primi
 license = "MIT"
 
 [compat]
-# Unchanged from the bundled `bitty-terminal.palette` realization.
+# Unchanged from the former bundled `bitty-terminal.palette` realization.
 bitty = ">=0.1,<1.0"
 plugin-api = "^1.0"
 
@@ -25,8 +25,9 @@ plugin-api = "^1.0"
 # Unknown identifiers fail validation and there is no allow-all identifier.
 #
 # `ui.rich` gates `bitty.ui.mount`/`bitty.ui.update`; the `overlay` slot
-# additionally requires `ui.overlay`. The bundled Rust realization declared
-# only `ui.overlay` because it used the lower-level Panel Runtime overlay path;
+# additionally requires `ui.overlay`. The former bundled Rust realization
+# (removed from `bitty`) declared only `ui.overlay` because it used the
+# lower-level Panel Runtime overlay path;
 # the accepted Plugin API v1 Lua overlay path requires both (ADR 0009 /
 # Plugin API v1 Lua Surface RFC). Recorded intentional difference.
 ui.rich = true

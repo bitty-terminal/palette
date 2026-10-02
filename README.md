@@ -37,7 +37,8 @@ manifest `[compat]` ranges.
 
 ## Behavior
 
-The plugin keeps the bundled palette behavior and bounds:
+The plugin keeps the behavior and bounds of the former bundled palette; this
+package now defines them:
 
 - case-insensitive substring filtering over a bounded entry list, at most
   `128` displayed entries (`PALETTE_MAX_ENTRIES`);
@@ -60,18 +61,21 @@ The plugin keeps the bundled palette behavior and bounds:
   matching the returned count;
 - refresh on `focus.changed` while the palette is open.
 
-## Capability difference from the bundled realization
+## Capability difference from the former bundled realization
 
-The bundled Rust realization (`bitty` `crates/bitty-plugin-host/src/bundled.rs`
-`palette_manifest`, `crates/bitty-runtime/src/palette.rs`) declared only
-`ui.overlay` because it used the lower-level Panel Runtime overlay path. The
-accepted Plugin API v1 Lua overlay path (`bitty.ui.mount` on the `overlay`
-slot) requires **both** `ui.rich` and `ui.overlay` per ADR 0009 and the Plugin
-API v1 Lua Surface RFC. This package therefore requests `ui.rich` as well.
+This package is now the only realization of the palette envelope and
+behavior. The historical bundled Rust realization in `bitty` is gone: its
+manifest left the bundled catalog (`crates/bitty-plugin-host/src/bundled.rs`)
+when the palette migrated to this package (`CTX-0397`), and its runtime module
+(`crates/bitty-runtime/src/palette.rs`) was removed by `bitty` PR #1611
+(commit `67cdcc14`). That realization declared only `ui.overlay` because it
+used the lower-level Panel Runtime overlay path. The accepted Plugin API v1 Lua
+overlay path (`bitty.ui.mount` on the `overlay` slot) requires **both**
+`ui.rich` and `ui.overlay` per ADR 0009 and the Plugin API v1 Lua Surface RFC.
+This package therefore requests `ui.rich` as well.
 
-This is a recorded, intentional difference. Reconciling the bundled manifest or
-introducing a `ui.overlay`-only plain-overlay Lua path is tracked as a
-follow-up; see "Known gaps".
+This is a recorded, intentional difference. Introducing a `ui.overlay`-only
+plain-overlay Lua path is tracked as a follow-up; see "Known gaps".
 
 ## Known gaps
 
