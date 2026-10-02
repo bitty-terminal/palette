@@ -27,9 +27,9 @@
   explicitly scoped task and a reviewed security note; never widen silently.
 - Origin: this package is the independent first-party realization created by
   the OQ-053 bundled-plugin split decision ([bitty](https://github.com/bitty-terminal/bitty) `CTX-0397`). The accepted
-  Lua overlay path requires `ui.rich` in addition to the bundled
-  realization's `ui.overlay`; that difference is recorded, not a capability
-  widening done silently.
+  Lua overlay path requires `ui.rich` in addition to the former bundled
+  realization's `ui.overlay` (removed from `bitty` by PR #1611); that
+  difference is recorded, not a capability widening done silently.
 
 ## CarryCtx and agents
 

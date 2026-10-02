@@ -2,14 +2,16 @@
 -- (bitty-terminal.palette).
 --
 -- Pure functions with no host dependency, so the palette policy is unit
--- testable in plain Lua. The numeric bounds mirror the bundled Rust
--- realization (`bitty-runtime/src/palette.rs`): at most `128` displayed
--- entries, a `128`-character query, and `128`-character display text per
--- entry (the host overlay text bound `MAX_OVERLAY_TEXT_LEN`). The input
+-- testable in plain Lua. This module is the authoritative realization of
+-- the palette envelope: at most `128` displayed entries, a `128`-character
+-- query, and `128`-character display text per entry (the host overlay text
+-- bound `MAX_OVERLAY_TEXT_LEN`). These values were carried over from the
+-- historical bundled Rust realization, which was removed from `bitty` by
+-- PR #1611 (commit `67cdcc14`); no Rust counterpart remains. The input
 -- bound `MAX_INPUT` is a palette-local policy: candidate tables supplied
 -- through settings are untrusted data, so a single filter pass examines at
--- most `MAX_INPUT` candidates regardless of how large the table is. No Rust
--- counterpart exists upstream (the bundled realization trusts its input).
+-- most `MAX_INPUT` candidates regardless of how large the table is (the
+-- historical bundled realization trusted its input).
 
 local M = {}
 
