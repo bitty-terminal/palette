@@ -48,8 +48,9 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   (`CTX-0008`).
 - Replace the `ui.rich` + `ui.overlay` capability pair with the single coupled
   W-01 grant `ui.overlay.focus`, subscribe `overlay.released` alongside
-  `focus.changed`, and move the SDK pin to the first commit carrying the W-01
-  identifiers (`bitty-plugin-sdk#d5d117d`), so `just manifest` validates the
+  `focus.changed`, and move the SDK pin to `bitty-plugin-sdk#d5d117d`, which
+  carries the W-01 identifiers transitively via its parent `e769117` (W-120,
+  the first `ui.overlay.focus` commit), so `just manifest` validates the
   capture surface (bitty `bitty-terminal/bitty#1971`). The spec-acquire path
   needs only the focus grant; the v1 presentation-slot grants are unrequested.
   The vendored LuaLS definitions gain a marked hand-maintained W-01 amendment
