@@ -6,9 +6,9 @@ only.
 
 - Plugin id: `bitty-terminal.palette`
 - Lua module: `lua/palette/`
-- Capabilities: `ui.rich`, `ui.overlay`
+- Capabilities: `ui.overlay.focus`
 - Lazy commands: `bitty-terminal.palette:toggle`
-- Lazy events: `focus.changed`
+- Lazy events: `focus.changed`, `overlay.released`
 
 This repository is the independent first-party package created by the bundled
 plugin split decision (OQ-053, `bitty-plugins-docs` `product/bundled-plugin-split-decision.md`),
@@ -24,16 +24,16 @@ manifest `[compat]` ranges.
 
 ## Layout
 
-| Path                     | Purpose                                                                                         |
-| ------------------------ | ----------------------------------------------------------------------------------------------- |
-| `bitty-plugin.toml`      | Static manifest: identity, compatibility, capability requests, and lazy triggers.               |
-| `lua/palette/init.lua`   | Entry point evaluated once per activation; registers the toggle command and mounts the overlay. |
-| `lua/palette/filter.lua` | Bounded, host-free input scanning, filtering, and text-truncation policy.                       |
-| `lua/palette/scene.lua`  | Declarative `List`/`Text` overlay composition.                                                  |
-| `tests/`                 | Lua 5.4 behavior suite and LuaLS conformance.                                                   |
-| `package.json`           | Pinned dev dependencies: the authoritative `bitty-plugin-lint` by commit, plus tooling.         |
-| `bun.lock`               | Locked dependency graph installed by `just install`.                                            |
-| `justfile`               | Quality gates with pinned tool versions.                                                        |
+| Path                     | Purpose                                                                                          |
+| ------------------------ | ------------------------------------------------------------------------------------------------ |
+| `bitty-plugin.toml`      | Static manifest: identity, compatibility, capability requests, and lazy triggers.                |
+| `lua/palette/init.lua`   | Entry point evaluated once per activation; registers the toggle command and the capture session. |
+| `lua/palette/filter.lua` | Bounded, host-free input scanning, filtering, and text-truncation policy.                        |
+| `lua/palette/scene.lua`  | Declarative `List`/`Text` overlay composition, including the non-empty default scene.            |
+| `tests/`                 | Lua 5.4 behavior suite and LuaLS conformance.                                                    |
+| `package.json`           | Pinned dev dependencies: the authoritative `bitty-plugin-lint` by commit, plus tooling.          |
+| `bun.lock`               | Locked dependency graph installed by `just install`.                                             |
+| `justfile`               | Quality gates with pinned tool versions.                                                         |
 
 ## Behavior
 
@@ -52,14 +52,27 @@ package now defines them:
   boundary;
 - overlay content composed as a single declarative `List` of `Text` rows
   (`Text`, `Row`, `Column`, `List` are the only Plugin API v1 node kinds);
-- host UI calls are `pcall`-guarded: a denied or failed `bitty.ui.mount`
-  degrades to command-only mode, and a rejected `bitty.ui.update` keeps the
-  last successfully presented scene instead of throwing at the command caller
-  or the `focus.changed` dispatcher;
+- every open acquires the focusable overlay plus transient input capture in
+  one Core-owned switch
+  (`bitty.ui.overlay.acquire({ title = "Palette", placeholder = "Filter commands" })`);
+  the Core surfaces only the capture owner's block, so the acquire is what
+  makes the overlay visible;
+- the open scene is never empty: the title row plus the filtered items, or the
+  title plus a `No entries` placeholder row when the list is empty — a real UI,
+  not a bare pill;
+- closing ends the session (`bitty.ui.overlay.release(handle, "cancelled")`),
+  which destroys the surface; an involuntary session end (focus switch, idle
+  timeout, unload) observed through `overlay.released` resets the toggle state
+  so the next toggle re-opens;
+- host capture calls are `pcall`-guarded: a denied focus grant, a live foreign
+  session, or a host without the capture table degrades to command-only mode
+  (counts still returned), and a rejected session update keeps the last
+  successfully presented scene instead of throwing at the command caller or
+  the event dispatchers;
 - `toggle` returns the number of displayed entries (`0` when closing) and
   declares a closed empty-object `args_schema` plus an integer `result_schema`
   matching the returned count;
-- refresh on `focus.changed` while the palette is open.
+- refresh on `focus.changed` while a session is held.
 
 ## Capability difference from the former bundled realization
 
@@ -69,28 +82,29 @@ manifest left the bundled catalog (`crates/bitty-plugin-host/src/bundled.rs`)
 when the palette migrated to this package (`CTX-0397`), and its runtime module
 (`crates/bitty-runtime/src/palette.rs`) was removed by `bitty` PR #1611
 (commit `67cdcc14`). That realization declared only `ui.overlay` because it
-used the lower-level Panel Runtime overlay path. The accepted Plugin API v1 Lua
-overlay path (`bitty.ui.mount` on the `overlay` slot) requires **both**
-`ui.rich` and `ui.overlay` per ADR 0009 and the Plugin API v1 Lua Surface RFC.
-This package therefore requests `ui.rich` as well.
+used the lower-level Panel Runtime overlay path.
 
-This is a recorded, intentional difference. Introducing a `ui.overlay`-only
-plain-overlay Lua path is tracked as a follow-up; see "Known gaps".
+This package requests neither v1 presentation grant. The accepted W-01
+overlay-input-capture contract couples the focusable surface and its capture
+session under the single `ui.overlay.focus` grant, and the spec-acquire path
+mounts the surface without passing the v1 `ui.overlay` slot gate — so the
+former `ui.rich` + `ui.overlay` pair is unrequested. The v1 `ui.overlay` slot
+stays presentation-only and non-focusable by design.
+
+This is a recorded, intentional difference for `bitty-terminal/bitty#1971`.
+Dropping the v1 grants is a narrowing (one grant instead of two) with no new
+authority: no filesystem, process, network, clipboard, or Terminal Truth
+access, and release stays ungated so cleanup can never wedge input.
 
 ## Known gaps
 
-- **Host overlay bridge.** The current `bitty` Lua bridge
-  (`crates/bitty-lua/src/host.rs`) implements commands, events, settings,
-  store, terminal snapshots, notifications, and timers, but not
-  `bitty.ui.mount`/`bitty.ui.update`. The plugin activates in command-only mode
-  and returns the number of displayed entries until that surface lands.
-  Tracked as a follow-up task in `bitty`.
 - **Entry source.** The accepted v1 surface exposes no command-registry
   enumeration and no `PickerProvider` (the Plugin Reuse and Provider Ecology
   RFC is draft/post-1.0). The palette reads its bounded entry list and query
   from its own settings namespace (`entries`, `query`) as a v1 adapter.
-- **Interactive query input.** v1 has no text-input surface for overlays, so
-  the query is read from settings rather than typed live.
+- **Interactive query input.** v1 has no text-input surface for overlays, and
+  this package does not yet drain the capture queue (`bitty.ui.overlay.poll`),
+  so the query is read from settings rather than typed live.
 
 ## Development
 
@@ -127,7 +141,8 @@ default) `bitty-terminal.palette`.
 
 ## Security
 
-Only `ui.rich` and `ui.overlay` are requested. The plugin has no filesystem,
-process, network, clipboard, terminal-input, or persistent-state authority. It
-performs no I/O and spawns nothing. Report vulnerabilities through the process
+Only `ui.overlay.focus` is requested: one focusable overlay plus the bounded
+transient input-capture session for one interaction. The plugin has no
+filesystem, process, network, clipboard, terminal-input, or persistent-state
+authority. It performs no I/O and spawns nothing. Report vulnerabilities through the process
 in the umbrella project's security policy rather than a public issue.

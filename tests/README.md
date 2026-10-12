@@ -30,17 +30,17 @@ just test-luals
 
 ## Layout
 
-| Path                            | Purpose                                                                                |
-| ------------------------------- | -------------------------------------------------------------------------------------- |
-| `run.lua`                       | Plain-Lua runner; exits non-zero on assertion failure.                                 |
-| `support/tap.lua`               | Assertion helper (no external test framework).                                         |
-| `support/mock_host.lua`         | Fail-closed in-process `bitty` stub modeling the used v1 subset (capabilities, scene). |
-| `spec/filter_spec.lua`          | Filtering and truncation policy unit tests.                                            |
-| `spec/scene_spec.lua`           | Declarative scene composition unit tests.                                              |
-| `spec/init_spec.lua`            | Entry-point behavior against the mock host.                                            |
-| `lua-defs/bitty.d.lua`          | Vendored LuaLS definitions from bitty-plugin-sdk (origin/main `a7fcd2b`).              |
-| `lua-defs/negative-fixture.lua` | Excluded-surface fixture that LuaLS must reject.                                       |
-| `check-lua-luals.mjs`           | Positive/negative LuaLS workspace check.                                               |
+| Path                            | Purpose                                                                                                                                                                        |
+| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `run.lua`                       | Plain-Lua runner; exits non-zero on assertion failure.                                                                                                                         |
+| `support/tap.lua`               | Assertion helper (no external test framework).                                                                                                                                 |
+| `support/mock_host.lua`         | Fail-closed in-process `bitty` stub modeling the used surface (v1 commands/events/settings plus the W-01 capture acquire/update/release and `overlay.released`).               |
+| `spec/filter_spec.lua`          | Filtering and truncation policy unit tests.                                                                                                                                    |
+| `spec/scene_spec.lua`           | Declarative scene composition unit tests.                                                                                                                                      |
+| `spec/init_spec.lua`            | Entry-point behavior against the mock host.                                                                                                                                    |
+| `lua-defs/bitty.d.lua`          | Vendored LuaLS definitions from bitty-plugin-sdk plus a marked hand-maintained W-01 amendment (`bitty.ui.overlay.*`, `overlay.released`) until the SDK projection covers them. |
+| `lua-defs/negative-fixture.lua` | Excluded-surface fixture that LuaLS must reject.                                                                                                                               |
+| `check-lua-luals.mjs`           | Positive/negative LuaLS workspace check.                                                                                                                                       |
 
 ## Known gaps
 
@@ -48,9 +48,10 @@ just test-luals
   execute `init.lua` against it is a separate tooling task
   (`bitty-plugin-sdk` `docs/mock-host.md`, "Lua execution").
   `support/mock_host.lua` is this repository's bounded stand-in.
-- The `bitty` Lua bridge does not yet implement `bitty.ui.mount`/`update`, so
-  `init_spec.lua` exercises overlay behavior against the local mock host only;
-  in-host activation runs in command-only mode.
+- The `bitty` Lua bridge carries the W-01 capture surface behind the
+  `ui.overlay.focus` grant, so `init_spec.lua` exercises acquire/update/release
+  against the local mock host; headed coverage lands with the owning task's
+  Hyprland verification, not this harness.
 - CI installs `lua5.4` and the pinned dev dependencies but not
   `lua-language-server`, so `just test-luals` reports `skipped` (exit 0) in CI;
   install it locally for full LuaLS conformance coverage.
