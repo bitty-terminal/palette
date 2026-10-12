@@ -46,6 +46,15 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   realization (`crates/bitty-runtime/src/palette.rs`) was removed from `bitty`
   by PR #1611 (commit `67cdcc14`). Comment and prose only; no behavior change
   (`CTX-0008`).
+- Replace the `ui.rich` + `ui.overlay` capability pair with the single coupled
+  W-01 grant `ui.overlay.focus`, subscribe `overlay.released` alongside
+  `focus.changed`, and move the SDK pin to `bitty-plugin-sdk#d5d117d`, which
+  carries the W-01 identifiers transitively via its parent `e769117` (W-120,
+  the first `ui.overlay.focus` commit), so `just manifest` validates the
+  capture surface (bitty `bitty-terminal/bitty#1971`). The spec-acquire path
+  needs only the focus grant; the v1 presentation-slot grants are unrequested.
+  The vendored LuaLS definitions gain a marked hand-maintained W-01 amendment
+  until the SDK projection covers the surface.
 
 ### Removed
 
@@ -63,10 +72,26 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   second return value, and fails closed on non-table input. Oversized
   `entries` settings no longer do unbounded work per toggle or focus change
   (R20).
-- UI resilience: `bitty.ui.mount` and `bitty.ui.update` are `pcall`-guarded;
-  a denied mount degrades to command-only mode, a rejected update keeps the
-  last-known-good scene, and neither crashes activation, the `toggle` command,
-  nor the `focus.changed` handler (R21, M-PAL-01).
+- UI resilience: host UI calls are `pcall`-guarded; a denied capture degrades
+  to command-only mode, a rejected update keeps the last-known-good scene, and
+  neither crashes activation, the `toggle` command, nor the event handlers
+  (R21, M-PAL-01).
+- Toggle acquires the W-01 transient input capture on open and ships a
+  non-empty default scene (bitty `bitty-terminal/bitty#1971`): every open
+  calls `bitty.ui.overlay.acquire({ title, placeholder })` so the Core
+  surfaces the session block, paints title plus filtered items (or the
+  placeholder row when empty) with the session-owned update, and destroys the
+  surface on `release("cancelled")`. Involuntary session ends observed through
+  `overlay.released` reset the toggle state so the next toggle re-opens.
+  Without the capture grant, on a conflicting session, or on a host without
+  the capture table, the toggle degrades to command-only counts.
+- Lower the manifest `compat.bitty` floor `>=0.1,<1.0` →
+  `>=0.0.22,<0.1` (bitty `bitty-terminal/bitty#1970`): the install-pipeline
+  CompatibilityCheck refused every `0.0.x` host, so the plugin never activated
+  for `0.0.23` testing. The new floor is the verified-against `0.0.22`-dev
+  host carrying the v1 bridge, the W-01 capture mechanism, and the
+  `overlay.released` event; the `<0.1` ceiling stays restrictive because `0.x`
+  minors may break.
 - `toggle` declares a closed empty-object `args_schema` and an integer
   `result_schema` matching the returned count, consistent with the Plugin API
   v1 command contract and the `activity` command style (R21, L-PAL-03).

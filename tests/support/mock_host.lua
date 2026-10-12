@@ -1,11 +1,15 @@
 -- Minimal in-process `bitty` host stub for the palette behavior tests.
 --
 -- This is a test double, not a host implementation: it models only the
--- accepted Plugin API v1 subset the palette uses (ADR 0009 / Plugin API v1
--- Lua Surface RFC), with fail-closed capability gates, manifest-declared
--- command/event validation, and the v1 declarative scene validation
--- (`Text`, `Row`, `Column`, `List` only, depth `16`). It performs no I/O,
--- spawns nothing, and never touches the network or the filesystem.
+-- accepted surface the palette uses — Plugin API v1 (ADR 0009 / Plugin API v1
+-- Lua Surface RFC: commands, events, settings, `bitty.ui.mount`/`update`
+-- scene validation) plus the accepted W-01 focusable-overlay capture surface
+-- (`bitty.ui.overlay.acquire` in spec form / `update` / `release` on the
+-- session block, gated by `ui.overlay.focus`; `overlay.released` observation
+-- event) — with fail-closed capability gates, manifest-declared command/event
+-- validation, and the v1 declarative scene validation (`Text`, `Row`,
+-- `Column`, `List` only, depth `16`). It performs no I/O, spawns nothing,
+-- and never touches the network or the filesystem.
 
 local MockHost = {}
 MockHost.__index = MockHost
@@ -105,6 +109,10 @@ function MockHost.new(options)
   self.subscriptions = {}
   self.blocks = {}
   self.updates = 0
+  -- Transient input-capture owner while a session is active:
+  -- `{ handle = <overlay block> }`, or nil when idle. Single-owner switch
+  -- mirroring the Core `OverlayCapture` acquire/release contract.
+  self.capture = nil
   self.handle_counter = 0
   self.sequence = 1
   self.bitty = self:build_bitty()
@@ -180,7 +188,8 @@ function MockHost:build_bitty()
         end
         validate_component(component, 1)
         local handle = self:next_handle()
-        self.blocks[handle] = { generation = 1, version = 1, component = deepcopy(component) }
+        self.blocks[handle] =
+          { generation = 1, version = 1, slot = slot, component = deepcopy(component) }
         return handle
       end,
       update = function(handle, component)
@@ -195,6 +204,103 @@ function MockHost:build_bitty()
         self.updates = self.updates + 1
         return true
       end,
+      -- Accepted W-01 capture surface (spec form). Acquire mounts the
+      -- session surface and starts capture in one switch, gated by the
+      -- single coupled `ui.overlay.focus` grant; release destroys the
+      -- session surface and is ungated so cleanup can never wedge input.
+      overlay = {
+        acquire = function(spec)
+          self:assert_capability("bitty.ui.overlay.acquire", "ui.overlay.focus")
+          local title, placeholder = "", ""
+          if spec ~= nil then
+            if type(spec) ~= "table" then
+              fail(
+                "validation",
+                "E_UI_COMPONENT_INVALID",
+                "ui.overlay.acquire spec must be a table"
+              )
+            end
+            if spec.title ~= nil then
+              if type(spec.title) ~= "string" then
+                fail(
+                  "validation",
+                  "E_UI_COMPONENT_INVALID",
+                  "ui.overlay.acquire spec fields must be strings"
+                )
+              end
+              title = spec.title
+            end
+            if spec.placeholder ~= nil then
+              if type(spec.placeholder) ~= "string" then
+                fail(
+                  "validation",
+                  "E_UI_COMPONENT_INVALID",
+                  "ui.overlay.acquire spec fields must be strings"
+                )
+              end
+              placeholder = spec.placeholder
+            end
+          end
+          if self.capture ~= nil then
+            fail(
+              "runtime",
+              "E_UI_ALREADY_CAPTURED",
+              "a focusable-overlay input capture is already active"
+            )
+          end
+          local children = {}
+          if title ~= "" then
+            children[#children + 1] = { kind = "Text", text = title }
+          end
+          if placeholder ~= "" then
+            children[#children + 1] = { kind = "Text", text = placeholder }
+          end
+          if #children == 0 then
+            children[1] = { kind = "Text", text = "" }
+          end
+          local component = { kind = "Column", children = children }
+          validate_component(component, 1)
+          local handle = self:next_handle()
+          self.blocks[handle] =
+            { generation = 1, version = 1, slot = "overlay", component = deepcopy(component) }
+          self.capture = { handle = handle }
+          return handle
+        end,
+        update = function(handle, component)
+          self:assert_capability("bitty.ui.overlay.update", "ui.overlay.focus")
+          if self.capture == nil or self.capture.handle ~= handle then
+            fail(
+              "runtime",
+              "E_UI_NOT_OWNER",
+              "no focusable-overlay input capture is held for this handle"
+            )
+          end
+          validate_component(component, 1)
+          local block = self.blocks[handle]
+          if block == nil then
+            return false
+          end
+          block.version = block.version + 1
+          block.component = deepcopy(component)
+          self.updates = self.updates + 1
+          return true
+        end,
+        release = function(handle, reason)
+          if reason ~= nil and reason ~= "submitted" and reason ~= "cancelled" then
+            fail(
+              "validation",
+              "E_DEF_INVALID",
+              "ui.overlay.release reason must be 'submitted' or 'cancelled'"
+            )
+          end
+          if self.capture ~= nil and self.capture.handle == handle then
+            self.capture = nil
+            self.blocks[handle] = nil
+            return true
+          end
+          return false
+        end,
+      },
     },
   }
 end
@@ -222,6 +328,26 @@ function MockHost:run(command_id, args)
     fail("validation", "E_COMMAND_UNDECLARED", "command is not registered: " .. qualified)
   end
   return def.run(args or {})
+end
+
+-- Drop the capture owner and destroy the session surface without notifying
+-- the plugin, simulating a Core-side involuntary session end (focus switch,
+-- timeout, unload). Tests then deliver the `overlay.released` observation
+-- with `publish`.
+function MockHost:revoke_overlay()
+  if self.capture ~= nil then
+    self.blocks[self.capture.handle] = nil
+    self.capture = nil
+  end
+end
+
+-- The session block of the live capture owner (the block the Core would
+-- surface), or nil when no session holds capture.
+function MockHost:session_block()
+  if self.capture == nil then
+    return nil
+  end
+  return self.blocks[self.capture.handle]
 end
 
 return MockHost

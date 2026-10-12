@@ -21,15 +21,22 @@
   `palette`, Lua module `lua/palette/`.
 - Purpose: command palette and picker UI via the overlay slot, using
   declarative list and text primitives only.
-- Authority boundary: only `ui.rich` and `ui.overlay` are requested. No
-  filesystem, process, network, clipboard, terminal input, or persistent-state
-  authority; no install-time code execution. A wider request needs an
-  explicitly scoped task and a reviewed security note; never widen silently.
+- Authority boundary: only `ui.overlay.focus` is requested (accepted W-01
+  overlay-input-capture contract: one coupled grant for the focusable surface
+  plus its transient capture session; the v1 presentation grants are
+  unrequested). No filesystem, process, network, clipboard, terminal input, or
+  persistent-state authority; no install-time code execution. A wider request
+  needs an explicitly scoped task and a reviewed security note; never widen
+  silently.
 - Origin: this package is the independent first-party realization created by
   the OQ-053 bundled-plugin split decision ([bitty](https://github.com/bitty-terminal/bitty) `CTX-0397`). The accepted
-  Lua overlay path requires `ui.rich` in addition to the former bundled
-  realization's `ui.overlay` (removed from `bitty` by PR #1611); that
-  difference is recorded, not a capability widening done silently.
+  W-01 overlay-input-capture contract (bitty `bitty-terminal/bitty#1971`)
+  couples the focusable surface and its capture session under the single
+  `ui.overlay.focus` grant, replacing the former `ui.rich` + `ui.overlay`
+  pair; the former bundled realization declared only `ui.overlay` (removed
+  from `bitty` by PR #1611) because it used the lower-level Panel Runtime
+  overlay path. That difference is recorded, not a capability widening done
+  silently.
 
 ## CarryCtx and agents
 

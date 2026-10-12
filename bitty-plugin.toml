@@ -16,26 +16,41 @@ description = "Command palette and picker UI via overlay slot, declarative primi
 license = "MIT"
 
 [compat]
-# Unchanged from the former bundled `bitty-terminal.palette` realization.
-bitty = ">=0.1,<1.0"
+# bitty#1970: the floor is the verified-against 0.0.22-dev host, not 0.1.
+# The install pipeline (`bitty-package` CompatibilityCheck) evaluates this
+# range against the host application version and refuses the install
+# (`E_INCOMPATIBLE`, no activation) on mismatch, so the former `>=0.1` floor
+# blocked every 0.0.x host. The new floor is safe because 0.0.22 carries both
+# host surfaces this plugin uses: the W-01 transient capture mechanism
+# (`bitty.ui.overlay.acquire` / `update` / `release` plus capture-owner
+# surfacing) and the `overlay.released` observation event, on top of the
+# long-standing v1 commands/events/settings bridge. The `<0.1` ceiling stays
+# deliberately restrictive because 0.x minors may break (same rationale as
+# the composer plugin's `>=0.0.21,<0.1`); revisit on API bumps.
+bitty = ">=0.0.22,<0.1"
 plugin-api = "^1.0"
 
 [capabilities]
-# Deny by default: omit this table entirely when the plugin needs no authority.
-# Unknown identifiers fail validation and there is no allow-all identifier.
+# Deny by default: a single coupled grant. Unknown identifiers fail validation
+# and there is no allow-all identifier.
 #
-# `ui.rich` gates `bitty.ui.mount`/`bitty.ui.update`; the `overlay` slot
-# additionally requires `ui.overlay`. The former bundled Rust realization
-# (removed from `bitty`) declared only `ui.overlay` because it used the
-# lower-level Panel Runtime overlay path;
-# the accepted Plugin API v1 Lua overlay path requires both (ADR 0009 /
-# Plugin API v1 Lua Surface RFC). Recorded intentional difference.
-ui.rich = true
-ui.overlay = true
+# `ui.overlay.focus` (bitty#1971, accepted W-01 overlay-input-capture
+# contract) acquires the focusable overlay and holds the single transient
+# input-capture session for one interaction. The Core surfaces only the
+# capture owner's block, so without this grant the toggle paints invisibly.
+# This replaces the former `ui.rich` + `ui.overlay` pair: the spec-acquire
+# path (`bitty.ui.overlay.acquire({ title, placeholder })`) mounts the surface
+# and starts capture in one Core-owned switch without passing the v1
+# `ui.overlay` slot gate, and content updates ride the session-owned
+# `bitty.ui.overlay.update`. The v1 presentation slot (`ui.overlay`,
+# non-focusable) is therefore unrequested. No filesystem, process, network,
+# clipboard, or Terminal Truth authority comes with the grant; release stays
+# ungated so cleanup can never wedge input.
+ui.overlay.focus = true
 
 [lazy]
 # Static triggers let the host register the plugin without creating a VM.
 # Commands are plugin-qualified: `<plugin-id>:<resource>`.
 commands = ["bitty-terminal.palette:toggle"]
 # Events the plugin subscribes to during activation.
-events = ["focus.changed"]
+events = ["focus.changed", "overlay.released"]

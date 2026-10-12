@@ -1,8 +1,13 @@
 --- Bitty Plugin API v1 LuaLS definitions.
---- GENERATED FILE - DO NOT EDIT.
+--- GENERATED FILE - DO NOT EDIT, except the trailing W-01 amendment block.
 --- Source: surface/bitty-plugin-api-v1.json
 --- Contract: bitty-docs:docs/decisions/adrs/ADR-0009-plugin-api-v1-lua-surface.md + bitty-docs:docs/specifications/plugin-api-v1-lua-surface-rfc.md
---- Regenerate: bun scripts/generate-lua-defs.ts --write
+--- W-01 amendment (hand-maintained): the accepted overlay-input-capture
+--- contract (bitty-docs:docs/development/overlay-input-capture-contract.md,
+--- capability `ui.overlay.focus`) is not in the SDK v1 surface yet, so the
+--- `bitty.ui.overlay.*` spellings and the `overlay.released` event below are
+--- vendored here with their contract source until the SDK projection covers
+--- them. Regenerate: bun scripts/generate-lua-defs.ts --write
 --- Verify: just lua-defs-check
 ---@meta bitty
 
@@ -56,7 +61,7 @@ local BittyCommandsNamespace = {}
 function BittyCommandsNamespace.register(def) end
 
 --- Closed v1 event-name set; subscribing to an undeclared or unknown name is a registration error.
----@alias BittyEventName "plugin.activated"|"plugin.suspended"|"plugin.disposed"|"handler.violation"|"terminal.opened"|"terminal.closed"|"terminal.title-changed"|"terminal.cwd-changed"|"terminal.bell"|"focus.changed"|"selection.changed"|"process.exited"|"config.reloaded"|"intercept.command-dispatch"|"intercept.terminal-spawn"|"intercept.paste"|"intercept.open-url"
+---@alias BittyEventName "plugin.activated"|"plugin.suspended"|"plugin.disposed"|"handler.violation"|"terminal.opened"|"terminal.closed"|"terminal.title-changed"|"terminal.cwd-changed"|"terminal.bell"|"focus.changed"|"selection.changed"|"process.exited"|"config.reloaded"|"intercept.command-dispatch"|"intercept.terminal-spawn"|"intercept.paste"|"intercept.open-url"|"overlay.released"
 
 --- Event payload with no fields for lifecycle, signal, and coalescable observation events.
 ---@class BittyEmptyPayload
@@ -277,6 +282,7 @@ function BittyServicesNamespace.provide(iface, impl) end
 --- Declarative UI contribution surface (L2); rich content requires ui.rich and the overlay slot
 --- requires ui.overlay.
 ---@class BittyUiNamespace
+---@field overlay BittyOverlayNamespace Focusable-overlay capture surface (W-01 amendment below).
 local BittyUiNamespace = {}
 
 --- Mounts declarative component content into an accepted semantic slot; rich content requires
@@ -446,3 +452,51 @@ function BittyTimersNamespace.cancel(timer_id) end
 ---@field tasks BittyTasksNamespace
 ---@field timers BittyTimersNamespace
 bitty = {}
+
+--- W-01 AMENDMENT (hand-maintained, see the file header).
+---
+--- Accepted overlay-input-capture contract
+--- (bitty-docs:docs/development/overlay-input-capture-contract.md,
+--- capability `ui.overlay.focus`): the focusable overlay plus the single
+--- transient input-capture session for one interaction. Every call below fails
+--- with `E_CAPABILITY_DENIED` without the granted capability and with
+--- `E_UI_UNAVAILABLE` on a host without a capture backend; no plugin callback
+--- ever runs on the input path.
+
+--- Presentation-hint spec for bitty.ui.overlay.acquire; every field is
+--- optional and unknown fields are ignored.
+---@class BittyOverlaySpec
+---@field title? string Bounded title hint.
+---@field placeholder? string Bounded placeholder hint.
+
+--- Focusable-overlay capture surface (W-01); lives under bitty.ui.
+---@class BittyOverlayNamespace
+local BittyOverlayNamespace = {}
+
+--- Requests the focusable surface and the capture session in one Core-owned
+--- switch; returns the opaque session handle bound to the calling generation.
+--- Capabilities: ui.overlay.focus.
+---@param spec? BittyOverlaySpec
+---@return BittyBlockHandle
+function BittyOverlayNamespace.acquire(spec) end
+
+--- Replaces the overlay content for a session the caller owns; fails with
+--- `E_UI_NOT_OWNER` for a foreign or released handle and keeps the previous
+--- content. Capabilities: ui.overlay.focus.
+---@param handle BittyBlockHandle
+---@param component BittySceneNode
+---@return boolean
+function BittyOverlayNamespace.update(handle, component) end
+
+--- Ends a session the caller owns; idempotent. The optional reason is an
+--- owner-supplied disposition of "submitted" or "cancelled" and defaults to
+--- "released". Release is ungated so cleanup can never wedge input.
+---@param handle BittyBlockHandle
+---@param reason? string
+---@return boolean
+function BittyOverlayNamespace.release(handle, reason) end
+
+--- overlay.released payload: the capture owner and the terminal reason.
+---@class BittyOverlayReleasedPayload
+---@field owner string Capture owner at release time.
+---@field reason string Terminal release reason.
