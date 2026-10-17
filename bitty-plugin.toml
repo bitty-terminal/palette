@@ -16,7 +16,7 @@ description = "Command palette and picker UI via overlay slot, declarative primi
 license = "MIT"
 
 [compat]
-# bitty#1970: the floor is the verified-against 0.0.22-dev host, not 0.1.
+# The floor is the verified-against 0.0.24 host, not 0.1.
 # The install pipeline (`bitty-package` CompatibilityCheck) evaluates this
 # range against the host application version and refuses the install
 # (`E_INCOMPATIBLE`, no activation) on mismatch, so the former `>=0.1` floor
@@ -27,7 +27,7 @@ license = "MIT"
 # long-standing v1 commands/events/settings bridge. The `<0.1` ceiling stays
 # deliberately restrictive because 0.x minors may break (same rationale as
 # the composer plugin's `>=0.0.21,<0.1`); revisit on API bumps.
-bitty = ">=0.0.22,<0.1"
+bitty = ">=0.0.24,<0.1"
 plugin-api = "^1.0"
 
 [capabilities]
