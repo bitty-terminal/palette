@@ -85,13 +85,13 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   `overlay.released` reset the toggle state so the next toggle re-opens.
   Without the capture grant, on a conflicting session, or on a host without
   the capture table, the toggle degrades to command-only counts.
-- Lower the manifest `compat.bitty` floor `>=0.1,<1.0` →
-  `>=0.0.22,<0.1` (bitty `bitty-terminal/bitty#1970`): the install-pipeline
-  CompatibilityCheck refused every `0.0.x` host, so the plugin never activated
-  for `0.0.23` testing. The new floor is the verified-against `0.0.22`-dev
-  host carrying the v1 bridge, the W-01 capture mechanism, and the
-  `overlay.released` event; the `<0.1` ceiling stays restrictive because `0.x`
-  minors may break.
+- Historical compatibility context only: earlier investigation recorded a
+  `0.0.22-dev` host as carrying the v1 bridge, the W-01 capture mechanism, and
+  the `overlay.released` event (bitty `bitty-terminal/bitty#1970`). This records
+  the reviewed contract/candidate context and does not claim current runtime
+  feature usability. The manifest's current compatibility floor is
+  `>=0.0.24,<0.1`; the `<0.1` ceiling stays restrictive because `0.x` minors
+  may break.
 - `toggle` declares a closed empty-object `args_schema` and an integer
   `result_schema` matching the returned count, consistent with the Plugin API
   v1 command contract and the `activity` command style (R21, L-PAL-03).
