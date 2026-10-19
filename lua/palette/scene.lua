@@ -18,6 +18,10 @@ M.PLACEHOLDER = "Filter commands"
 -- still shows a real UI (title plus hint) instead of a bare pill.
 M.EMPTY_NOTE = "No entries"
 
+-- Placeholder row painted when the command catalog cannot be read at all, so a
+-- broken source is never mistaken for an empty one.
+M.UNAVAILABLE_NOTE = "Command list unavailable"
+
 -- Build the overlay list node for an already filtered and bounded entry list.
 function M.list(entries)
   local children = {}
@@ -33,13 +37,18 @@ function M.empty()
 end
 
 -- Default open scene for an already filtered and bounded entry list: the
--- title row plus either the item rows or the placeholder row. Never empty,
--- so a surfaced overlay always paints title/placeholder/items.
-function M.default(entries)
+-- title row plus either the item rows or the placeholder row. `source_ok`
+-- separates an empty catalog (`No entries`) from a catalog the host could not
+-- serve (`Command list unavailable`); nil is treated as a healthy source.
+-- Never empty, so a surfaced overlay always paints title/placeholder/items.
+function M.default(entries, source_ok)
   local children = {}
   children[1] = { kind = "Text", text = M.TITLE }
   if #entries == 0 then
-    children[2] = { kind = "Text", text = M.EMPTY_NOTE }
+    children[2] = {
+      kind = "Text",
+      text = source_ok == false and M.UNAVAILABLE_NOTE or M.EMPTY_NOTE,
+    }
   else
     for index, entry in ipairs(entries) do
       children[index + 1] = { kind = "Text", text = entry }
