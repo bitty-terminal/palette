@@ -67,6 +67,15 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Palette entries populate on Bitty 0.0.24: the entry source is now the active
+  host command catalog (`bitty.commands.list`, bitty `CTX-1035`) instead of
+  undeclared settings. `bitty.settings.get("entries")` failed closed with
+  `E_SETTINGS_UNDECLARED`, so the palette always painted `No entries` (issue
+  #36). The settings read is gone; the `query` filter is declared in
+  `[settings]` so it is served instead of failing closed, a catalog the host
+  cannot serve paints `Command list unavailable` (distinct from an empty
+  catalog's `No entries`), and the behavior suite covers both paths against a
+  fail-closed mock host.
 - Input bound: `filter.filter` examines at most `1024` candidate entries per
   pass (`MAX_INPUT`), reports the cut through a `{ scanned, truncated }` stats
   second return value, and fails closed on non-table input. Oversized

@@ -1,6 +1,7 @@
 -- Entry-point behavior tests for `palette.init` against the mock host.
 
 local MockHost = require("support.mock_host")
+local scene = require("palette.scene")
 
 local PLUGIN_ID = "bitty-terminal.palette"
 local TOGGLE = PLUGIN_ID .. ":toggle"
@@ -17,7 +18,22 @@ local function with_grants(options)
   options.grants = options.grants or { "ui.overlay.focus" }
   options.commands = options.commands or { TOGGLE }
   options.events = options.events or { "focus.changed", "overlay.released" }
+  options.declared_settings = options.declared_settings or { "query" }
   return MockHost.new(options)
+end
+
+-- Catalog rows shaped like `bitty.commands.list` (bitty CTX-1035).
+local function catalog(titles)
+  local rows = {}
+  for index, title in ipairs(titles) do
+    rows[index] = {
+      plugin = "test",
+      id = "cmd" .. index,
+      qualified = "test:cmd" .. index,
+      title = title,
+    }
+  end
+  return rows
 end
 
 local function run(context)
@@ -28,10 +44,8 @@ local function run(context)
   -- every open acquires a fresh session surface.
   do
     local host = with_grants({
-      settings = {
-        entries = { "Open File", "Close Tab", "toggle palette" },
-        query = "o",
-      },
+      catalog = catalog({ "Open File", "Close Tab", "toggle palette" }),
+      settings = { query = "o" },
     })
     activate(host)
     tap.ok(host.commands[TOGGLE] ~= nil, "toggle command registered")
@@ -91,7 +105,7 @@ local function run(context)
   -- that is already gone.
   do
     local host = with_grants({
-      settings = { entries = { "alpha", "beta" } },
+      catalog = catalog({ "alpha", "beta" }),
     })
     activate(host)
     tap.equal(host:run("toggle", {}), 2, "open succeeds before revocation")
@@ -104,15 +118,103 @@ local function run(context)
     tap.equal(#host:session_block().component.children, 3, "re-open paints title plus rows")
   end
 
-  -- Opening with an empty entry list still paints a non-empty default scene
-  -- (title plus placeholder), so the surfaced overlay is a real UI.
+  -- Opening with an empty host catalog still paints a non-empty default scene
+  -- (title plus `No entries`), so a healthy-but-empty source is distinguishable
+  -- from a broken one.
   do
-    local host = with_grants({ settings = {} })
+    local host = with_grants({})
     activate(host)
-    tap.equal(host:run("toggle", {}), 0, "open with no entries returns zero")
-    tap.ok(host.capture ~= nil, "open with no entries still acquires capture")
+    tap.equal(host:run("toggle", {}), 0, "open with no commands returns zero")
+    tap.ok(host.capture ~= nil, "open with no commands still acquires capture")
     tap.equal(#host:session_block().component.children, 2, "empty open paints title plus placeholder")
     tap.equal(host:session_block().component.children[1].text, "Palette", "empty open keeps title")
+    tap.equal(
+      host:session_block().component.children[2].text,
+      scene.EMPTY_NOTE,
+      "healthy empty catalog says No entries"
+    )
+  end
+
+  -- The palette lists the active host command catalog, not a demo list: every
+  -- row `bitty.commands.list` serves (0.0.24, bitty CTX-1035) is painted, in
+  -- host order, and the count the toggle returns matches.
+  do
+    local host = with_grants({
+      catalog = {
+        {
+          plugin = "bitty-terminal.palette",
+          id = "toggle",
+          qualified = "bitty-terminal.palette:toggle",
+          title = "Palette: toggle",
+        },
+        {
+          plugin = "bitty-terminal.bar",
+          id = "focus",
+          qualified = "bitty-terminal.bar:focus",
+          title = "Unified Bar: focus workspace",
+        },
+        {
+          plugin = "bitty-terminal",
+          id = "close",
+          qualified = "bitty-terminal:close",
+          title = "Close panel",
+        },
+      },
+    })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 3, "open lists every active host command")
+    local children = host:session_block().component.children
+    tap.equal(#children, 4, "host catalog paints title plus one row per command")
+    tap.equal(children[1].text, scene.TITLE, "host catalog keeps the palette title")
+    tap.equal(children[2].text, "Palette: toggle", "own toggle is listed")
+    tap.equal(children[3].text, "Unified Bar: focus workspace", "foreign plugin command is listed")
+    tap.equal(children[4].text, "Close panel", "host action is listed")
+
+    -- A query narrows the same host catalog; it does not replace the source.
+    host.settings.query = "bar"
+    host:publish("focus.changed", {})
+    local filtered = host:session_block().component.children
+    tap.equal(#filtered, 2, "query narrows the host catalog to one row")
+    tap.equal(filtered[2].text, "Unified Bar: focus workspace", "query keeps the matching command")
+  end
+
+  -- The host catalog is the entry source, so a host that fails closed on the
+  -- (now declared) query key cannot empty the palette the way undeclared
+  -- `entries` did before issue #36.
+  do
+    local host = with_grants({
+      declared_settings = {},
+      catalog = catalog({ "alpha" }),
+    })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 1, "undeclared query does not empty the catalog")
+    tap.equal(
+      host:session_block().component.children[2].text,
+      "alpha",
+      "catalog row survives a fail-closed settings read"
+    )
+  end
+
+  -- A catalog the host cannot serve is reported as unavailable, never as an
+  -- empty catalog: the overlay note differs and the toggle still degrades to a
+  -- count instead of throwing at the caller.
+  do
+    local host = with_grants({
+      catalog = { { title = "must not be painted" } },
+      catalog_error = { class = "runtime", code = "E_NOT_IMPLEMENTED" },
+    })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 0, "broken catalog returns zero")
+    tap.ok(host.capture ~= nil, "broken catalog still opens the surface")
+    tap.equal(
+      host:session_block().component.children[2].text,
+      scene.UNAVAILABLE_NOTE,
+      "broken catalog paints the unavailable note"
+    )
+    tap.ok(
+      scene.UNAVAILABLE_NOTE ~= scene.EMPTY_NOTE,
+      "broken and empty sources stay distinguishable"
+    )
   end
 
   -- Undeclared event fails closed at activation.
@@ -134,7 +236,8 @@ local function run(context)
       grants = {},
       commands = { TOGGLE },
       events = { "focus.changed", "overlay.released" },
-      settings = { entries = { "alpha", "beta" } },
+      declared_settings = { "query" },
+      catalog = catalog({ "alpha", "beta" }),
     })
     local ok = pcall(activate, host)
     tap.ok(ok, "denied capture does not crash activation")
@@ -149,7 +252,7 @@ local function run(context)
   -- swallowed and the last successfully presented scene is kept.
   do
     local host = with_grants({
-      settings = { entries = { "alpha", "beta" } },
+      catalog = catalog({ "alpha", "beta" }),
     })
     activate(host)
     tap.equal(host:run("toggle", {}), 2, "open succeeds before revocation")
@@ -169,7 +272,7 @@ local function run(context)
   -- command-only open instead of throwing, and a later close is a no-op.
   do
     local host = with_grants({
-      settings = { entries = { "alpha", "beta" } },
+      catalog = catalog({ "alpha", "beta" }),
     })
     activate(host)
     host.capture = { handle = -1 }
@@ -185,7 +288,8 @@ local function run(context)
       grants = {},
       commands = { TOGGLE },
       events = { "focus.changed", "overlay.released" },
-      settings = { entries = { "alpha", "beta" } },
+      declared_settings = { "query" },
+      catalog = catalog({ "alpha", "beta" }),
     })
     host.bitty.ui = nil
     activate(host)
@@ -201,7 +305,8 @@ local function run(context)
       grants = { "ui.overlay.focus" },
       commands = { TOGGLE },
       events = { "focus.changed", "overlay.released" },
-      settings = { entries = { "alpha", "beta" } },
+      declared_settings = { "query" },
+      catalog = catalog({ "alpha", "beta" }),
     })
     host.bitty.ui.overlay = nil
     activate(host)

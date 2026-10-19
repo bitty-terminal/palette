@@ -40,13 +40,17 @@ manifest `[compat]` ranges.
 The plugin keeps the behavior and bounds of the former bundled palette; this
 package now defines them:
 
-- case-insensitive substring filtering over a bounded entry list, at most
-  `128` displayed entries (`PALETTE_MAX_ENTRIES`);
-- candidate input bounded to `1024` examined entries per filter pass
-  (`MAX_INPUT`); oversized `entries` settings are cut at the bound and the cut
-  is reported through the filter stats (`filter.filter` returns
-  `{ scanned, truncated }` as its second value);
-- non-table `entries` settings fail closed to an empty list;
+- case-insensitive substring filtering over the active host command catalog
+  (`bitty.commands.list`, bounded by the host), at most `128` displayed
+  entries (`PALETTE_MAX_ENTRIES`);
+- candidate input bounded to `1024` examined catalog rows per filter pass
+  (`MAX_INPUT`); larger catalogs are cut at the bound and the cut is reported
+  through the filter stats (`filter.filter` returns `{ scanned, truncated }` as
+  its second value);
+- a catalog the host cannot serve paints `Command list unavailable`, so a
+  broken source is never mistaken for an empty one;
+- the declared `query` setting (default `""`) narrows the catalog; it is read
+  through `bitty.settings.get` and fails closed to the empty query;
 - query truncated to `128` characters, display text truncated to the host
   overlay text bound `128` (`MAX_OVERLAY_TEXT_LEN`) at a UTF-8 code-point
   boundary;
@@ -57,9 +61,10 @@ package now defines them:
   (`bitty.ui.overlay.acquire({ title = "Palette", placeholder = "Filter commands" })`);
   the Core surfaces only the capture owner's block, so the acquire is what
   makes the overlay visible;
-- the open scene is never empty: the title row plus the filtered items, or the
-  title plus a `No entries` placeholder row when the list is empty — a real UI,
-  not a bare pill;
+- the open scene is never empty: the title row plus the filtered command rows,
+  or the title plus a `No entries` placeholder row when the catalog is empty,
+  or `Command list unavailable` when the host cannot serve the catalog — a real
+  UI, not a bare pill;
 - closing ends the session (`bitty.ui.overlay.release(handle, "cancelled")`),
   which destroys the surface; an involuntary session end (focus switch, idle
   timeout, unload) observed through `overlay.released` resets the toggle state
@@ -98,13 +103,11 @@ access, and release stays ungated so cleanup can never wedge input.
 
 ## Known gaps
 
-- **Entry source.** The accepted v1 surface exposes no command-registry
-  enumeration and no `PickerProvider` (the Plugin Reuse and Provider Ecology
-  RFC is draft/post-1.0). The palette reads its bounded entry list and query
-  from its own settings namespace (`entries`, `query`) as a v1 adapter.
 - **Interactive query input.** v1 has no text-input surface for overlays, and
   this package does not yet drain the capture queue (`bitty.ui.overlay.poll`),
-  so the query is read from settings rather than typed live.
+  so the query is read from the declared `query` setting rather than typed live.
+  A picker-provider API is still draft/post-1.0; the host command catalog is the
+  entry source.
 
 ## Development
 

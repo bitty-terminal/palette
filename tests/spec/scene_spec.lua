@@ -31,6 +31,15 @@ local function run(context)
   for _, child in ipairs(full.children) do
     tap.equal(child.kind, "Text", "default scene uses Text rows only")
   end
+
+  -- A broken catalog is distinguishable from a healthy empty one.
+  local unavailable = scene.default({}, false)
+  tap.equal(
+    unavailable.children[2].text,
+    scene.UNAVAILABLE_NOTE,
+    "unavailable source paints its own note"
+  )
+  tap.ok(scene.UNAVAILABLE_NOTE ~= scene.EMPTY_NOTE, "unavailable and empty notes differ")
 end
 
 return { run = run }

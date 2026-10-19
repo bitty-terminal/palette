@@ -1,5 +1,6 @@
 --- Bitty Plugin API v1 LuaLS definitions.
---- GENERATED FILE - DO NOT EDIT, except the trailing W-01 amendment block.
+--- GENERATED FILE - DO NOT EDIT, except the trailing hand-maintained
+--- amendment blocks (W-01 overlay capture and `commands.list`).
 --- Source: surface/bitty-plugin-api-v1.json
 --- Contract: bitty-docs:docs/decisions/adrs/ADR-0009-plugin-api-v1-lua-surface.md + bitty-docs:docs/specifications/plugin-api-v1-lua-surface-rfc.md
 --- W-01 amendment (hand-maintained): the accepted overlay-input-capture
@@ -500,3 +501,25 @@ function BittyOverlayNamespace.release(handle, reason) end
 ---@class BittyOverlayReleasedPayload
 ---@field owner string Capture owner at release time.
 ---@field reason string Terminal release reason.
+
+--- HAND-MAINTAINED AMENDMENT: bitty.commands.list (0.0.24, bitty CTX-1035).
+---
+--- The 0.0.24 Lua bridge serves the active host/plugin command catalog through
+--- `bitty.commands.list` (bitty `crates/bitty-lua/src/host.rs`,
+--- `COMMAND_LIST_MAX_ENTRIES`), but the generated Plugin API v1 surface still
+--- omits the spelling. The palette reads this catalog as its entry source, so
+--- the row shape and the call are declared here until the SDK projection
+--- covers them.
+
+--- One active command-catalog row.
+---@class BittyCommandCatalogEntry
+---@field plugin string Owner plugin id.
+---@field id string Plugin-local command id.
+---@field qualified string Fully qualified `<plugin-id>:<id>` command name.
+---@field title string Bounded display title.
+
+--- Returns the active command catalog, bounded by the host
+--- (COMMAND_LIST_MAX_ENTRIES); a host without the catalog fails with
+--- E_NOT_IMPLEMENTED.
+---@return BittyCommandCatalogEntry[]
+function BittyCommandsNamespace.list() end

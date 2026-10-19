@@ -105,6 +105,15 @@ function MockHost.new(options)
     self.declared_events[name] = true
   end
   self.settings = options.settings or {}
+  self.declared_settings = {}
+  for _, name in ipairs(options.declared_settings or {}) do
+    self.declared_settings[name] = true
+  end
+  -- Active host command catalog served by `bitty.commands.list` (0.0.24,
+  -- bitty CTX-1035). `catalog_error` models a host that cannot serve the
+  -- surface at all.
+  self.catalog = options.catalog or {}
+  self.catalog_error = options.catalog_error
   self.commands = {}
   self.subscriptions = {}
   self.blocks = {}
@@ -156,6 +165,12 @@ function MockHost:build_bitty()
         self.commands[qualified] = def
         return self:next_handle()
       end,
+      list = function()
+        if self.catalog_error ~= nil then
+          fail(self.catalog_error.class or "runtime", self.catalog_error.code or "E_NOT_IMPLEMENTED", "command catalog is unavailable")
+        end
+        return deepcopy(self.catalog)
+      end,
     },
     events = {
       subscribe = function(name, handler)
@@ -173,6 +188,13 @@ function MockHost:build_bitty()
       get = function(key)
         if type(key) ~= "string" then
           fail("validation", "E_SETTINGS_KEY_INVALID", "settings key must be a string")
+        end
+        if not self.declared_settings[key] then
+          fail(
+            "validation",
+            "E_SETTINGS_UNDECLARED",
+            "settings key is not declared in the manifest: " .. key
+          )
         end
         return self.settings[key]
       end,

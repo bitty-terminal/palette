@@ -40,6 +40,14 @@ plugin-api = "^1.0"
 # ungated so cleanup can never wedge input.
 ui.overlay.focus = true
 
+[settings]
+# Static filter applied to the host command catalog. v1 has no live text-input
+# surface for overlays, so the palette cannot type-filter yet; the key is
+# declared anyway because `bitty.settings.get` fails closed
+# (`E_SETTINGS_UNDECLARED`) for undeclared keys, and an empty string lists the
+# whole catalog (bitty CTX-1195).
+query = { type = "string", default = "" }
+
 [lazy]
 # Static triggers let the host register the plugin without creating a VM.
 # Commands are plugin-qualified: `<plugin-id>:<resource>`.

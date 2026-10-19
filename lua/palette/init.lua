@@ -15,13 +15,13 @@
 -- only the capture owner's block, so the acquire is what makes the overlay
 -- visible; without it the toggle degrades to command-only counts.
 --
--- v1 data adapter: the accepted surface exposes no command-registry
--- enumeration and no `PickerProvider` (the Plugin Reuse and Provider Ecology
--- RFC is draft/post-1.0), so the palette reads its bounded entry list and
--- query from its own settings namespace (`entries`, `query`). Captured
--- keystrokes are not drained: v1 has no text-input surface for overlays, so
--- live query typing stays a follow-up and the query is read from settings
--- rather than typed live. See the README "Known gaps" section.
+-- Entry source: `bitty.commands.list` serves the active host command catalog
+-- on 0.0.24 (bitty CTX-1035), so the palette lists the host commands and
+-- actions it exists to pick instead of a privately populated settings list.
+-- Captured keystrokes are not drained: v1 has no text-input surface for
+-- overlays, so live query typing stays a follow-up and the bounded `query`
+-- setting is declared in the manifest and applied as a static filter. See the
+-- README "Known gaps" section.
 --
 -- Every host call is guarded: a host without the capture table, a denied
 -- focus grant, or a live foreign session (`E_UI_ALREADY_CAPTURED`) degrades
@@ -48,20 +48,51 @@ local function setting(name)
   return nil
 end
 
-local function entries()
-  local value = setting("entries")
-  if type(value) == "table" then
-    return value
-  end
-  return {}
-end
-
 local function query()
   local value = setting("query")
   if type(value) == "string" then
     return value
   end
   return ""
+end
+
+-- Active host command catalog as display rows, plus a source flag. The flag is
+-- what lets the scene distinguish a genuinely empty catalog from a host that
+-- cannot serve one at all: a missing bridge, a raised call, or a non-table
+-- result reports `false`, never a silently empty list. Only `title` is shown,
+-- with `qualified` as the fallback for a malformed row, so untrusted catalog
+-- fields never reach the overlay beyond a bounded string.
+local function catalog()
+  local commands = bitty.commands
+  if type(commands) ~= "table" or type(commands.list) ~= "function" then
+    return {}, false
+  end
+  local ok, rows = pcall(commands.list)
+  if not ok or type(rows) ~= "table" then
+    return {}, false
+  end
+  local out = {}
+  for _, row in ipairs(rows) do
+    local text = nil
+    if type(row) == "table" then
+      text = row.title
+      if type(text) ~= "string" or text == "" then
+        text = row.qualified
+      end
+    elseif type(row) == "string" then
+      text = row
+    end
+    if type(text) == "string" and text ~= "" then
+      out[#out + 1] = text
+    end
+  end
+  return out, true
+end
+
+-- The filtered view for the current catalog and query.
+local function view()
+  local entries, source_ok = catalog()
+  return filter.filter(entries, query()), source_ok
 end
 
 -- The W-01 capture table, or nil on a host that predates it. Checked on every
@@ -90,8 +121,8 @@ local function paint()
   if ui_overlay == nil or type(ui_overlay.update) ~= "function" then
     return false
   end
-  local filtered = filter.filter(entries(), query())
-  local ok, updated = pcall(ui_overlay.update, session, scene.default(filtered))
+  local filtered, source_ok = view()
+  local ok, updated = pcall(ui_overlay.update, session, scene.default(filtered, source_ok))
   return ok and updated ~= false
 end
 
@@ -101,7 +132,7 @@ end
 -- command-only open (the count is still returned, no surface appears, and
 -- nothing throws).
 local function open()
-  local filtered = filter.filter(entries(), query())
+  local filtered, source_ok = view()
   local ui_overlay = overlay_table()
   if ui_overlay == nil or type(ui_overlay.acquire) ~= "function" then
     return filtered
@@ -112,7 +143,7 @@ local function open()
     return filtered
   end
   session = handle
-  local pok, updated = pcall(ui_overlay.update, session, scene.default(filtered))
+  local pok, updated = pcall(ui_overlay.update, session, scene.default(filtered, source_ok))
   if (not pok) or updated == false then
     -- The session died between acquire and paint; end it and degrade rather
     -- than holding a blank capture.
