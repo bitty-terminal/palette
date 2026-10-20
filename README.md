@@ -15,6 +15,113 @@ plugin split decision (OQ-053, `bitty-plugins-docs` `product/bundled-plugin-spli
 owned by `bitty` `CTX-0397`. It was scaffolded from
 [bitty-plugin-template](https://github.com/bitty-terminal/bitty-plugin-template).
 
+## Overview
+
+Palette opens a focusable overlay listing the command catalog the host
+publishes, with case-insensitive substring filtering and bounded rows. It is
+presentation only: picking an entry does not execute it, and the overlay is
+released when toggled closed or when input capture ends. If the host cannot
+serve the catalog, the overlay says so instead of showing an empty list.
+
+## Install
+
+Prerequisites:
+
+- Bitty `>=0.0.24,<0.1` with Plugin API `^1.0` (the manifest `[compat]`
+  range).
+- A host that exposes the W-01 overlay capture surface
+  (`bitty.ui.overlay.acquire` / `update` / `release`) and the command catalog
+  (`bitty.commands.list`). Without capture the plugin still runs, but the
+  overlay cannot appear.
+- Consent to `ui.overlay.focus`, the single coupled grant for the focusable
+  overlay and its transient input-capture session.
+
+Install from a local checkout:
+
+```sh
+git clone https://github.com/bitty-terminal/palette.git
+cd palette
+bitty plugin install "$PWD"
+bitty plugin enable bitty-terminal.palette
+bitty plugin list
+```
+
+`bitty plugin install <path>` stages the package under the XDG data store and
+records the capability you consent to; it executes no plugin code (`--yes`
+approves non-interactively). Verify activation with `bitty plugin list`: the
+entry must show `bitty-terminal.palette`, version `0.0.1`, source
+`local-path`, enabled, and the `ui.overlay.focus` grant.
+`bitty plugin info bitty-terminal.palette` prints the recorded grant set.
+
+## Commands
+
+| Command                         | What it does                                                                              | Arguments | Default keybinding |
+| ------------------------------- | ----------------------------------------------------------------------------------------- | --------- | ------------------ |
+| `bitty-terminal.palette:toggle` | Opens the palette and returns the number of displayed rows, or closes it and returns `0`. | None      | None               |
+
+The command declares a closed empty-object argument schema and returns an
+integer between `0` and `128`. Refreshing while open repaints the filtered
+catalog; a denied capture grant or a live foreign capture session degrades to
+command-only behavior, where the count is still returned but no overlay is
+shown.
+
+## Configuration
+
+Settings live in `$XDG_CONFIG_HOME/bitty/plugins/bitty-terminal.palette.lua`.
+Values are read at activation and pinned to that plugin generation.
+
+| Key     | Type     | Default | Description                                                                                                            | Reload  |
+| ------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- | ------- |
+| `query` | `string` | `""`    | Static case-insensitive substring filter applied to the host command catalog. An empty string lists the whole catalog. | Restart |
+
+Example:
+
+```lua
+-- $XDG_CONFIG_HOME/bitty/plugins/bitty-terminal.palette.lua
+return {
+  query = "",
+}
+```
+
+`Restart` means settings are resolved during activation: there is no settings
+watcher or hot-reload path, so edit the file and restart Bitty. The query is a
+static filter, not live typing; v1 exposes no text-input surface for overlays.
+
+## Keybindings
+
+Palette registers no default keybinding. Bind a chord in
+`$XDG_CONFIG_HOME/bitty/init.lua`:
+
+```lua
+return {
+  keymaps = {
+    {
+      chord = "ctrl+p",
+      action = "bitty-terminal.palette:toggle",
+      context = "global",
+    },
+  },
+}
+```
+
+User keymaps own the binding: a user entry with the same `context + chord`
+replaces a shipped entry, and the plugin never binds a chord on its own.
+
+## Troubleshooting
+
+| Code                    | Class        | Cause                                                                           | Remedy                                                                                                                                |
+| ----------------------- | ------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `E_SETTINGS_UNDECLARED` | `validation` | A settings read named a key absent from the manifest `[settings]` declarations. | Install a plugin version whose declarations match the running build. Only `query` is declared; other config entries are ignored.      |
+| `E_INCOMPATIBLE`        | `validation` | The running host is outside `>=0.0.24,<0.1`, or Plugin API is not `^1.0`.       | Upgrade Bitty or install a Palette release whose `[compat]` range covers your host.                                                   |
+| `E_CAPABILITY_DENIED`   | `runtime`    | The `ui.overlay.focus` grant is missing, expired, or revoked.                   | Re-run `bitty plugin install <path>` and approve the grant; `bitty plugin list` shows what is recorded.                               |
+| `E_UI_ALREADY_CAPTURED` | `runtime`    | Another overlay already holds the single transient input-capture session.       | Close the other overlay, then toggle again. Palette degrades instead of throwing; the toggle returns a count with no visible overlay. |
+
+A toggle that returns a count but shows nothing means capture acquisition was
+refused: the grant is missing, another overlay holds the session, or the host
+predates the capture table. A visible `Command list unavailable` row means the
+host cannot serve `bitty.commands.list`; an empty catalog shows the `No
+entries` placeholder.
+
 ## Status
 
 Pre-implementation ecosystem: the plugin package, manifest, and policy are
@@ -127,20 +234,8 @@ accepted contract in bitty-docs
 compatibility, capability closed set, lazy triggers, hard limits). `just lua`
 parses the Lua modules with the pinned `luaparse` 0.3.1 grammar. `lua5.4` is
 required for the behavior suite; `lua-language-server` is optional and
-`just test-luals` skips with exit 0 when absent.
-
-## Install
-
-An external package is installed from a local checkout with the Bitty CLI:
-
-```sh
-bitty plugin install /path/to/palette
-```
-
-The registry entry in
-[bitty-plugins](https://github.com/bitty-terminal/bitty-plugins) points at this
-repository; this plugin previously shipped as a bundled (staged, disabled by
-default) `bitty-terminal.palette`.
+`just test-luals` skips with exit 0 when absent. `just docs-check` fails when
+the README Configuration table drifts from the manifest `[settings]`.
 
 ## Security
 
