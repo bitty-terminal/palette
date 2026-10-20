@@ -85,8 +85,12 @@ test-luals:
 # Run all behavior and conformance tests.
 test: test-lua test-luals
 
+# Fail when the README Configuration table drifts from the manifest [settings].
+docs-check:
+    bun tests/check-docs.mjs
+
 # Aggregate gate run locally and in CI (after `just install`).
-check: lint fmt-check manifest lua test
+check: lint fmt-check manifest lua test docs-check
 
 # Publish a redacted CarryCtx snapshot inside this repo (commander merge
 # closeout only; never a git hook). `carryctx export --publication` redacts the
