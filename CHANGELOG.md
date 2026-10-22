@@ -20,6 +20,11 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Minimum-only host compatibility (bitty#2462):** the manifest
+  `[compat].bitty` range is now `>=0.0.24` with no upper bound, so 0.1+ hosts
+  are no longer refused by a manifest ceiling; `plugin-api` stays `^1.0`. The
+  README prerequisites and `E_INCOMPATIBLE` guidance follow the same
+  minimum-only contract.
 - Pin the repository toolchain metadata: `packageManager` is now `bun@1.4.2`,
   [CONTRIBUTING.md](CONTRIBUTING.md) documents the contributor-branch
   convention (`ctx-XXXX/<type>-<slug>`; external contributors use
@@ -99,8 +104,8 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the `overlay.released` event (bitty `bitty-terminal/bitty#1970`). This records
   the reviewed contract/candidate context and does not claim current runtime
   feature usability. The manifest's current compatibility floor is
-  `>=0.0.24,<0.1`; the `<0.1` ceiling stays restrictive because `0.x` minors
-  may break.
+  `>=0.0.24` with no upper bound (minimum-only host compatibility,
+  bitty#2462).
 - `toggle` declares a closed empty-object `args_schema` and an integer
   `result_schema` matching the returned count, consistent with the Plugin API
   v1 command contract and the `activity` command style (R21, L-PAL-03).

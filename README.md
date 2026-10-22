@@ -27,8 +27,8 @@ serve the catalog, the overlay says so instead of showing an empty list.
 
 Prerequisites:
 
-- Bitty `>=0.0.24,<0.1` with Plugin API `^1.0` (the manifest `[compat]`
-  range).
+- Bitty `>=0.0.24` with Plugin API `^1.0` (the manifest `[compat]` minimum;
+  no upper bound is declared).
 - A host that exposes the W-01 overlay capture surface
   (`bitty.ui.overlay.acquire` / `update` / `release`) and the command catalog
   (`bitty.commands.list`). Without capture the plugin still runs, but the
@@ -112,7 +112,7 @@ replaces a shipped entry, and the plugin never binds a chord on its own.
 | Code                    | Class        | Cause                                                                           | Remedy                                                                                                                                |
 | ----------------------- | ------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | `E_SETTINGS_UNDECLARED` | `validation` | A settings read named a key absent from the manifest `[settings]` declarations. | Install a plugin version whose declarations match the running build. Only `query` is declared; other config entries are ignored.      |
-| `E_INCOMPATIBLE`        | `validation` | The running host is outside `>=0.0.24,<0.1`, or Plugin API is not `^1.0`.       | Upgrade Bitty or install a Palette release whose `[compat]` range covers your host.                                                   |
+| `E_INCOMPATIBLE`        | `validation` | The running host does not satisfy `>=0.0.24`, or Plugin API is not `^1.0`.      | Upgrade Bitty or install a Palette release whose `[compat]` minimum covers your host.                                                 |
 | `E_CAPABILITY_DENIED`   | `runtime`    | The `ui.overlay.focus` grant is missing, expired, or revoked.                   | Re-run `bitty plugin install <path>` and approve the grant; `bitty plugin list` shows what is recorded.                               |
 | `E_UI_ALREADY_CAPTURED` | `runtime`    | Another overlay already holds the single transient input-capture session.       | Close the other overlay, then toggle again. Palette degrades instead of throwing; the toggle returns a count with no visible overlay. |
 
