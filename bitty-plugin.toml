@@ -16,10 +16,11 @@ description = "Command palette and picker UI via overlay slot, declarative primi
 license = "MIT"
 
 [compat]
-# The declared floor follows the 0.0.24 release train, while the runtime API
-# major remains ^1.0. The `<0.1` ceiling stays deliberately restrictive because
-# 0.x minors may break; revisit it on a compatibility or API-major update.
-bitty = ">=0.0.24,<0.1"
+# Minimum-only host compatibility (bitty#2462): the floor follows the 0.0.24
+# release train this plugin is verified against, and no upper bound is
+# declared, so newer hosts (0.0.x and 0.1+) install without a manifest edit.
+# The runtime API major remains ^1.0.
+bitty = ">=0.0.24"
 plugin-api = "^1.0"
 
 [capabilities]
