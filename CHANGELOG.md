@@ -72,6 +72,10 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- Worktree-safe Markdown gate (#119 in `bitty-plugins`):
+  `.markdownlint-cli2.jsonc` ignores `**/node_modules` and `.worktrees`, so
+  `just check` run in a linked worktree no longer lints vendored dependency
+  trees under `.worktrees/<task>/node_modules` (MD012).
 - Palette entries populate on Bitty 0.0.24: the entry source is now the active
   host command catalog (`bitty.commands.list`, bitty `CTX-1035`) instead of
   undeclared settings. `bitty.settings.get("entries")` failed closed with
