@@ -17,7 +17,8 @@ end
 local function with_grants(options)
   options.grants = options.grants or { "ui.overlay.focus" }
   options.commands = options.commands or { TOGGLE }
-  options.events = options.events or { "focus.changed", "overlay.released" }
+  options.events = options.events
+    or { "focus.changed", "overlay.released", "overlay.input.available" }
   options.declared_settings = options.declared_settings or { "query" }
   return MockHost.new(options)
 end
@@ -36,6 +37,86 @@ local function catalog(titles)
   return rows
 end
 
+local function explicit_catalog()
+  return {
+    {
+      plugin = "bitty-terminal.palette",
+      id = "toggle",
+      qualified = "bitty-terminal.palette:toggle",
+      title = "Palette: toggle",
+    },
+    {
+      plugin = "bitty-terminal.bar",
+      id = "focus",
+      qualified = "bitty-terminal.bar:focus",
+      title = "Unified Bar: focus workspace",
+    },
+    {
+      plugin = "bitty-terminal",
+      id = "close",
+      qualified = "bitty-terminal:close",
+      title = "Close panel",
+    },
+  }
+end
+
+local function children(host)
+  return host:session_block().component.children
+end
+
+local function query_line(host)
+  return children(host)[2].text
+end
+
+local function count_line(host)
+  return children(host)[3].text
+end
+
+-- Command rows are the entries after the title/query/count header. The
+-- selection marker distinguishes them from typed note rows.
+local function command_rows(host)
+  local out = {}
+  local all = children(host)
+  for index = 4, #all do
+    local text = all[index].text
+    local prefix = string.sub(text, 1, 2)
+    if prefix == "> " or prefix == "  " then
+      out[#out + 1] = text
+    end
+  end
+  return out
+end
+
+local function selected_row(host)
+  local rows = command_rows(host)
+  for _, row in ipairs(rows) do
+    if string.sub(row, 1, 2) == "> " then
+      return row
+    end
+  end
+  return nil
+end
+
+local function scene_text(host)
+  local parts = {}
+  for _, child in ipairs(children(host)) do
+    parts[#parts + 1] = child.text
+  end
+  return table.concat(parts, "\n")
+end
+
+-- Deliver one captured key event and the cold-path input nudge that makes the
+-- palette drain it.
+local function press(host, text, data)
+  host:push_input("key", text, data)
+  host:nudge_input()
+end
+
+local function type_text(host, text)
+  host:push_input("text", text)
+  host:nudge_input()
+end
+
 local function run(context)
   local tap = context.tap
 
@@ -49,9 +130,14 @@ local function run(context)
     })
     activate(host)
     tap.ok(host.commands[TOGGLE] ~= nil, "toggle command registered")
-    tap.equal(#host.subscriptions, 2, "two subscriptions")
+    tap.equal(#host.subscriptions, 3, "three subscriptions")
     tap.equal(host.subscriptions[1].kind, "focus.changed", "focus.changed subscribed")
     tap.equal(host.subscriptions[2].kind, "overlay.released", "overlay.released subscribed")
+    tap.equal(
+      host.subscriptions[3].kind,
+      "overlay.input.available",
+      "overlay.input.available subscribed"
+    )
     tap.equal(#host.blocks, 0, "activation mounts no block")
     tap.equal(host.capture, nil, "activation holds no capture")
 
@@ -69,15 +155,18 @@ local function run(context)
     tap.equal(result_schema.minimum, 0, "toggle result schema is non-negative")
 
     -- Opening acquires the transient input capture (W-01) and paints the
-    -- default scene with title plus filtered rows.
+    -- interactive scene: title, live query, match count, then rows.
     local count = host:run("toggle", {})
     tap.equal(count, 3, "toggle returns filtered entry count")
     tap.ok(host.capture ~= nil, "opening acquires input capture")
     tap.equal(host.updates, 1, "opening paints the session scene once")
     tap.equal(host:session_block().component.kind, "List", "session block is a List")
-    tap.equal(#host:session_block().component.children, 4, "session block carries title plus filtered rows")
-    tap.equal(host:session_block().component.children[1].text, "Palette", "session block starts with title")
-    tap.equal(host:session_block().component.children[4].text, "toggle palette", "lowercase row matched")
+    tap.equal(#children(host), 6, "session block carries header plus filtered rows")
+    tap.equal(children(host)[1].text, scene.TITLE, "session block starts with title")
+    tap.equal(query_line(host), "> o", "session block paints the live query")
+    tap.equal(count_line(host), "3 of 3 commands", "session block paints the match count")
+    tap.contains(command_rows(host)[1], "Open File", "first filtered row")
+    tap.contains(command_rows(host)[3], "toggle palette", "lowercase row matched")
 
     -- focus.changed while open refreshes the same session block.
     local before = host.updates
@@ -97,7 +186,7 @@ local function run(context)
     -- Re-opening acquires a fresh session after a close.
     tap.equal(host:run("toggle", {}), 3, "re-open returns filtered entry count")
     tap.ok(host.capture ~= nil, "re-open re-acquires input capture")
-    tap.equal(#host:session_block().component.children, 4, "re-open repaints title plus rows")
+    tap.equal(#children(host), 6, "re-open repaints header plus rows")
   end
 
   -- An involuntary session end observed through `overlay.released` resets the
@@ -115,67 +204,51 @@ local function run(context)
     host:publish("overlay.released", { owner = PLUGIN_ID, reason = "focus_switched" })
     tap.equal(host:run("toggle", {}), 2, "next toggle re-opens after involuntary release")
     tap.ok(host.capture ~= nil, "re-open re-acquires input capture")
-    tap.equal(#host:session_block().component.children, 3, "re-open paints title plus rows")
+    tap.equal(#children(host), 5, "re-open paints header plus rows")
   end
 
   -- Opening with an empty host catalog still paints a non-empty default scene
-  -- (title plus `No entries`), so a healthy-but-empty source is distinguishable
-  -- from a broken one.
+  -- (title, query, count, and `No entries`), so a healthy-but-empty source is
+  -- distinguishable from a broken one.
   do
     local host = with_grants({})
     activate(host)
     tap.equal(host:run("toggle", {}), 0, "open with no commands returns zero")
     tap.ok(host.capture ~= nil, "open with no commands still acquires capture")
-    tap.equal(#host:session_block().component.children, 2, "empty open paints title plus placeholder")
-    tap.equal(host:session_block().component.children[1].text, "Palette", "empty open keeps title")
-    tap.equal(
-      host:session_block().component.children[2].text,
-      scene.EMPTY_NOTE,
-      "healthy empty catalog says No entries"
-    )
+    tap.equal(#children(host), 4, "empty open paints header plus placeholder")
+    tap.equal(children(host)[1].text, scene.TITLE, "empty open keeps title")
+    tap.equal(query_line(host), "> " .. scene.PLACEHOLDER, "empty open keeps the placeholder")
+    tap.equal(count_line(host), "0 of 0 commands", "empty open counts zero commands")
+    tap.equal(children(host)[4].text, scene.EMPTY_NOTE, "healthy empty catalog says No entries")
   end
 
   -- The palette lists the active host command catalog, not a demo list: every
   -- row `bitty.commands.list` serves (0.0.24, bitty CTX-1035) is painted, in
   -- host order, and the count the toggle returns matches.
   do
-    local host = with_grants({
-      catalog = {
-        {
-          plugin = "bitty-terminal.palette",
-          id = "toggle",
-          qualified = "bitty-terminal.palette:toggle",
-          title = "Palette: toggle",
-        },
-        {
-          plugin = "bitty-terminal.bar",
-          id = "focus",
-          qualified = "bitty-terminal.bar:focus",
-          title = "Unified Bar: focus workspace",
-        },
-        {
-          plugin = "bitty-terminal",
-          id = "close",
-          qualified = "bitty-terminal:close",
-          title = "Close panel",
-        },
-      },
-    })
+    local host = with_grants({ catalog = explicit_catalog() })
     activate(host)
     tap.equal(host:run("toggle", {}), 3, "open lists every active host command")
-    local children = host:session_block().component.children
-    tap.equal(#children, 4, "host catalog paints title plus one row per command")
-    tap.equal(children[1].text, scene.TITLE, "host catalog keeps the palette title")
-    tap.equal(children[2].text, "Palette: toggle", "own toggle is listed")
-    tap.equal(children[3].text, "Unified Bar: focus workspace", "foreign plugin command is listed")
-    tap.equal(children[4].text, "Close panel", "host action is listed")
+    tap.equal(#children(host), 6, "host catalog paints header plus one row per command")
+    tap.equal(children(host)[1].text, scene.TITLE, "host catalog keeps the palette title")
+    tap.equal(query_line(host), "> " .. scene.PLACEHOLDER, "host catalog starts unfiltered")
+    tap.equal(count_line(host), "3 of 3 commands", "host catalog counts every command")
+    tap.contains(command_rows(host)[1], "Palette: toggle", "own toggle is listed")
+    tap.contains(command_rows(host)[2], "Unified Bar: focus workspace", "foreign plugin command is listed")
+    tap.contains(command_rows(host)[3], "Close panel", "host action is listed")
 
-    -- A query narrows the same host catalog; it does not replace the source.
-    host.settings.query = "bar"
-    host:publish("focus.changed", {})
-    local filtered = host:session_block().component.children
-    tap.equal(#filtered, 2, "query narrows the host catalog to one row")
-    tap.equal(filtered[2].text, "Unified Bar: focus workspace", "query keeps the matching command")
+    -- Live typing narrows the same host catalog; Backspace widens it again.
+    type_text(host, "bar")
+    tap.equal(query_line(host), "> bar", "typed query is painted")
+    tap.equal(#command_rows(host), 1, "query narrows the host catalog to one row")
+    tap.contains(command_rows(host)[1], "Unified Bar", "query keeps the matching command")
+    tap.equal(count_line(host), "1 of 3 commands", "match count follows the query")
+    press(host, "key:Backspace")
+    tap.equal(query_line(host), "> ba", "Backspace removes one code point")
+    tap.equal(#command_rows(host), 1, "partial query still matches the bar command")
+    press(host, "key:Backspace")
+    tap.equal(query_line(host), "> b", "second Backspace widens to one character")
+    tap.equal(#command_rows(host), 3, "single-character query matches every plugin id")
   end
 
   -- The host catalog is the entry source, so a host that fails closed on the
@@ -188,11 +261,7 @@ local function run(context)
     })
     activate(host)
     tap.equal(host:run("toggle", {}), 1, "undeclared query does not empty the catalog")
-    tap.equal(
-      host:session_block().component.children[2].text,
-      "alpha",
-      "catalog row survives a fail-closed settings read"
-    )
+    tap.contains(command_rows(host)[1], "alpha", "catalog row survives a fail-closed settings read")
   end
 
   -- A catalog the host cannot serve is reported as unavailable, never as an
@@ -206,11 +275,8 @@ local function run(context)
     activate(host)
     tap.equal(host:run("toggle", {}), 0, "broken catalog returns zero")
     tap.ok(host.capture ~= nil, "broken catalog still opens the surface")
-    tap.equal(
-      host:session_block().component.children[2].text,
-      scene.UNAVAILABLE_NOTE,
-      "broken catalog paints the unavailable note"
-    )
+    tap.equal(children(host)[4].text, scene.UNAVAILABLE_NOTE, "broken catalog paints the unavailable note")
+    tap.equal(count_line(host), "0 of 0 commands", "broken catalog counts zero commands")
     tap.ok(
       scene.UNAVAILABLE_NOTE ~= scene.EMPTY_NOTE,
       "broken and empty sources stay distinguishable"
@@ -235,7 +301,7 @@ local function run(context)
     local host = MockHost.new({
       grants = {},
       commands = { TOGGLE },
-      events = { "focus.changed", "overlay.released" },
+      events = { "focus.changed", "overlay.released", "overlay.input.available" },
       declared_settings = { "query" },
       catalog = catalog({ "alpha", "beta" }),
     })
@@ -260,7 +326,7 @@ local function run(context)
     host.grants["ui.overlay.focus"] = nil
     host:publish("focus.changed", {})
     tap.equal(host.updates, 1, "rejected focus refresh is swallowed")
-    tap.equal(#host:session_block().component.children, 3, "last-known-good scene is kept")
+    tap.equal(#children(host), 5, "last-known-good scene is kept")
     tap.equal(host:run("toggle", {}), 0, "closing after revocation does not throw")
     tap.equal(host.capture, nil, "close still ends the session without the grant")
     tap.equal(#host.blocks, 0, "close still destroys the surface without the grant")
@@ -287,7 +353,7 @@ local function run(context)
     local host = MockHost.new({
       grants = {},
       commands = { TOGGLE },
-      events = { "focus.changed", "overlay.released" },
+      events = { "focus.changed", "overlay.released", "overlay.input.available" },
       declared_settings = { "query" },
       catalog = catalog({ "alpha", "beta" }),
     })
@@ -304,7 +370,7 @@ local function run(context)
     local host = MockHost.new({
       grants = { "ui.overlay.focus" },
       commands = { TOGGLE },
-      events = { "focus.changed", "overlay.released" },
+      events = { "focus.changed", "overlay.released", "overlay.input.available" },
       declared_settings = { "query" },
       catalog = catalog({ "alpha", "beta" }),
     })
@@ -313,6 +379,195 @@ local function run(context)
     tap.equal(host:run("toggle", {}), 2, "no-capture-table toggle returns count")
     tap.equal(host.capture, nil, "no-capture-table toggle holds no session")
     tap.equal(#host.blocks, 0, "no-capture-table toggle mounts no surface")
+  end
+
+  -- Selection moves with arrows and j/k, wrapping at both ends. j/k are
+  -- navigation only while the query is empty, so a typed query can still
+  -- contain them.
+  do
+    local host = with_grants({ catalog = explicit_catalog() })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 3, "selection test opens three commands")
+    tap.contains(selected_row(host), "Palette: toggle", "first row starts selected")
+    press(host, "key:ArrowDown")
+    tap.contains(selected_row(host), "Unified Bar", "ArrowDown moves the highlight")
+    press(host, "key:ArrowDown")
+    tap.contains(selected_row(host), "Close panel", "ArrowDown reaches the last row")
+    press(host, "key:ArrowDown")
+    tap.contains(selected_row(host), "Palette: toggle", "ArrowDown wraps to the first row")
+    press(host, "key:ArrowUp")
+    tap.contains(selected_row(host), "Close panel", "ArrowUp wraps to the last row")
+    press(host, "j")
+    tap.contains(selected_row(host), "Palette: toggle", "j moves down and wraps")
+    press(host, "k")
+    tap.contains(selected_row(host), "Close panel", "k moves up and wraps")
+    type_text(host, "b")
+    press(host, "j")
+    tap.equal(query_line(host), "> bj", "j types once the query is non-empty")
+  end
+
+  -- The visible list is bounded to MAX_VISIBLE rows while selection can walk
+  -- the full bounded match list and the window follows the highlight.
+  do
+    local titles = {}
+    for index = 1, 20 do
+      titles[index] = "command " .. tostring(index)
+    end
+    local host = with_grants({ catalog = catalog(titles) })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 20, "bounded-window test opens twenty commands")
+    tap.equal(#command_rows(host), 12, "visible list bounded to MAX_VISIBLE")
+    for _ = 1, 12 do
+      press(host, "key:ArrowDown")
+    end
+    tap.equal(#command_rows(host), 12, "window stays bounded after selection moves")
+    tap.contains(command_rows(host)[7], "command 13", "window follows the highlight")
+    tap.contains(command_rows(host)[12], "command 18", "window paints the trailing rows")
+  end
+
+  -- Enter invokes the highlighted command exactly once through the host
+  -- surface and closes the overlay on success.
+  do
+    local host = with_grants({ catalog = explicit_catalog() })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 3, "invoke test opens three commands")
+    press(host, "key:ArrowDown")
+    press(host, "key:ArrowDown")
+    tap.contains(selected_row(host), "Close panel", "invoke target is highlighted")
+    press(host, "key:Enter")
+    tap.equal(#host.invocations, 1, "Enter invokes the command exactly once")
+    tap.equal(host.invocations[1].qualified, "bitty-terminal:close", "invoked qualified id")
+    tap.equal(type(host.invocations[1].args), "table", "invocation passes an args table")
+    tap.equal(next(host.invocations[1].args), nil, "invocation passes empty args")
+    tap.equal(host.capture, nil, "successful invocation releases the capture")
+    tap.equal(#host.blocks, 0, "successful invocation destroys the surface")
+    tap.equal(host:run("toggle", {}), 3, "next toggle re-opens after invocation")
+  end
+
+  -- A command whose args schema rejects the empty table is reported as a
+  -- typed "Needs arguments" row; the host validates before the callee body
+  -- runs, and the overlay stays open for the follow-up argument task.
+  do
+    local ran = false
+    local host = with_grants({
+      catalog = {
+        {
+          plugin = "test",
+          id = "needs-args",
+          qualified = "test:needs-args",
+          title = "Needs Args",
+        },
+      },
+      invoke_handlers = {
+        ["test:needs-args"] = function(args)
+          if next(args or {}) == nil then
+            error(
+              {
+                class = "validation",
+                code = "E_COMMAND_INVALID",
+                message = "args do not satisfy the command schema",
+              },
+              0
+            )
+          end
+          ran = true
+          return true
+        end,
+      },
+    })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 1, "needs-args test opens one command")
+    press(host, "key:Enter")
+    tap.equal(#host.invocations, 1, "needs-args attempt reaches the host once")
+    tap.equal(ran, false, "callee body never runs for a missing-args refusal")
+    tap.ok(host.capture ~= nil, "needs-args refusal keeps the overlay open")
+    tap.contains(scene_text(host), scene.NEEDS_ARGS_NOTE, "typed needs-arguments row")
+    tap.contains(scene_text(host), "Needs Args", "needs-arguments row names the command")
+    press(host, "key:Escape")
+    tap.equal(host.capture, nil, "Escape closes the needs-args overlay")
+  end
+
+  -- A result-schema violation is also E_COMMAND_INVALID, but it happened
+  -- after the callee ran, so it must not be mislabeled as missing arguments.
+  do
+    local host = with_grants({
+      catalog = {
+        {
+          plugin = "test",
+          id = "bad-result",
+          qualified = "test:bad-result",
+          title = "Bad Result",
+        },
+      },
+      invoke_errors = {
+        ["test:bad-result"] = {
+          class = "validation",
+          code = "E_COMMAND_INVALID",
+          message = "result does not satisfy the command schema",
+        },
+      },
+    })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 1, "bad-result test opens one command")
+    press(host, "key:Enter")
+    tap.ok(host.capture ~= nil, "result-schema refusal keeps the overlay open")
+    tap.contains(scene_text(host), scene.REFUSED_NOTE, "result-schema refusal is typed")
+    tap.not_contains(scene_text(host), scene.NEEDS_ARGS_NOTE, "result-schema refusal is not needs-args")
+  end
+
+  -- Any other host refusal keeps the overlay open with the typed error code.
+  do
+    local host = with_grants({
+      catalog = {
+        {
+          plugin = "test",
+          id = "refused",
+          qualified = "test:refused",
+          title = "Refused",
+        },
+      },
+      invoke_errors = {
+        ["test:refused"] = {
+          class = "runtime",
+          code = "E_COMMAND_GONE",
+          message = "command is gone",
+        },
+      },
+    })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 1, "refused test opens one command")
+    press(host, "key:Enter")
+    tap.equal(#host.invocations, 1, "refused invocation reaches the host once")
+    tap.ok(host.capture ~= nil, "refused invocation keeps the overlay open")
+    tap.contains(scene_text(host), scene.REFUSED_NOTE, "typed refusal row")
+    tap.contains(scene_text(host), "E_COMMAND_GONE", "refusal row carries the host error code")
+    press(host, "key:Escape")
+    tap.equal(host.capture, nil, "Escape closes the refused overlay")
+  end
+
+  -- A host without the invocation surface reports that capability gap as a
+  -- typed row instead of silently doing nothing.
+  do
+    local host = with_grants({ catalog = explicit_catalog() })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 3, "no-invoke test opens three commands")
+    host.bitty.commands.invoke = nil
+    press(host, "key:Enter")
+    tap.equal(#host.invocations, 0, "no-invoke host is never called")
+    tap.ok(host.capture ~= nil, "no-invoke host keeps the overlay open")
+    tap.contains(scene_text(host), scene.UNAVAILABLE_INVOKE_NOTE, "typed unavailable-invoke row")
+  end
+
+  -- A capture that dies between the nudge and the poll clears the local
+  -- session instead of wedging the next toggle.
+  do
+    local host = with_grants({ catalog = catalog({ "alpha", "beta" }) })
+    activate(host)
+    tap.equal(host:run("toggle", {}), 2, "stale-session test opens")
+    host:revoke_overlay()
+    host:nudge_input()
+    tap.equal(host:run("toggle", {}), 2, "stale session is reset and the next toggle opens")
+    tap.ok(host.capture ~= nil, "re-open re-acquires input capture")
   end
 end
 

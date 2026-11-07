@@ -8,7 +8,7 @@ only.
 - Lua module: `lua/palette/`
 - Capabilities: `ui.overlay.focus`
 - Lazy commands: `bitty-terminal.palette:toggle`
-- Lazy events: `focus.changed`, `overlay.released`
+- Lazy events: `focus.changed`, `overlay.released`, `overlay.input.available`
 
 This repository is the independent first-party package created by the bundled
 plugin split decision (OQ-053, `bitty-plugins-docs` `product/bundled-plugin-split-decision.md`),
@@ -18,10 +18,14 @@ owned by `bitty` `CTX-0397`. It was scaffolded from
 ## Overview
 
 Palette opens a focusable overlay listing the command catalog the host
-publishes, with case-insensitive substring filtering and bounded rows. It is
-presentation only: picking an entry does not execute it, and the overlay is
-released when toggled closed or when input capture ends. If the host cannot
-serve the catalog, the overlay says so instead of showing an empty list.
+publishes. Typing narrows the list with a case-insensitive substring match over
+the command id, title, and owning plugin id; Up/Down (and `j`/`k`) move the
+highlight, and Enter runs the highlighted command through the host-mediated
+`bitty.commands.invoke` surface. The overlay closes on success and stays open
+with a typed row when the host refuses the invocation (including a command that
+needs arguments). The overlay is also released when toggled closed or when
+input capture ends. If the host cannot serve the catalog, the overlay says so
+instead of showing an empty list.
 
 ## Install
 
@@ -30,9 +34,12 @@ Prerequisites:
 - Bitty `>=0.0.24` with Plugin API `^1.0` (the manifest `[compat]` minimum;
   no upper bound is declared).
 - A host that exposes the W-01 overlay capture surface
-  (`bitty.ui.overlay.acquire` / `update` / `release`) and the command catalog
-  (`bitty.commands.list`). Without capture the plugin still runs, but the
-  overlay cannot appear.
+  (`bitty.ui.overlay.acquire` / `update` / `poll` / `release`), the
+  observation-only `overlay.input.available` event, the command catalog
+  (`bitty.commands.list`), and host-mediated invocation
+  (`bitty.commands.invoke`). Without capture the plugin still runs, but the
+  overlay cannot appear; without invocation the overlay lists commands and
+  reports `Invocation unavailable` when Enter is pressed.
 - Consent to `ui.overlay.focus`, the single coupled grant for the focusable
   overlay and its transient input-capture session.
 
@@ -63,16 +70,18 @@ The command declares a closed empty-object argument schema and returns an
 integer between `0` and `128`. Refreshing while open repaints the filtered
 catalog; a denied capture grant or a live foreign capture session degrades to
 command-only behavior, where the count is still returned but no overlay is
-shown.
+shown. The palette never dispatches commands itself: Enter calls
+`bitty.commands.invoke(qualified, {})`, so the host keeps its deny-by-default
+checks, argument validation, and cross-VM containment.
 
 ## Configuration
 
 Settings live in `$XDG_CONFIG_HOME/bitty/plugins/bitty-terminal.palette.lua`.
 Values are read at activation and pinned to that plugin generation.
 
-| Key     | Type     | Default | Description                                                                                                            | Reload  |
-| ------- | -------- | ------- | ---------------------------------------------------------------------------------------------------------------------- | ------- |
-| `query` | `string` | `""`    | Static case-insensitive substring filter applied to the host command catalog. An empty string lists the whole catalog. | Restart |
+| Key     | Type     | Default | Description                                                                                                         | Reload         |
+| ------- | -------- | ------- | ------------------------------------------------------------------------------------------------------------------- | -------------- |
+| `query` | `string` | `""`    | Initial case-insensitive substring filter applied when the overlay opens. Live typing replaces it for that session. | Restart (seed) |
 
 Example:
 
@@ -83,9 +92,11 @@ return {
 }
 ```
 
-`Restart` means settings are resolved during activation: there is no settings
-watcher or hot-reload path, so edit the file and restart Bitty. The query is a
-static filter, not live typing; v1 exposes no text-input surface for overlays.
+`Restart (seed)` means settings are resolved during activation: there is no
+settings watcher or hot-reload path, so edit the file and restart Bitty. The
+setting seeds the filter each time the overlay opens; typing while the overlay
+is focused replaces that seed for the session, and closing the overlay discards
+the live query.
 
 ## Keybindings
 
@@ -109,25 +120,33 @@ replaces a shipped entry, and the plugin never binds a chord on its own.
 
 ## Troubleshooting
 
-| Code                    | Class        | Cause                                                                           | Remedy                                                                                                                                |
-| ----------------------- | ------------ | ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `E_SETTINGS_UNDECLARED` | `validation` | A settings read named a key absent from the manifest `[settings]` declarations. | Install a plugin version whose declarations match the running build. Only `query` is declared; other config entries are ignored.      |
-| `E_INCOMPATIBLE`        | `validation` | The running host does not satisfy `>=0.0.24`, or Plugin API is not `^1.0`.      | Upgrade Bitty or install a Palette release whose `[compat]` minimum covers your host.                                                 |
-| `E_CAPABILITY_DENIED`   | `runtime`    | The `ui.overlay.focus` grant is missing, expired, or revoked.                   | Re-run `bitty plugin install <path>` and approve the grant; `bitty plugin list` shows what is recorded.                               |
-| `E_UI_ALREADY_CAPTURED` | `runtime`    | Another overlay already holds the single transient input-capture session.       | Close the other overlay, then toggle again. Palette degrades instead of throwing; the toggle returns a count with no visible overlay. |
+| Code                    | Class        | Cause                                                                                                                    | Remedy                                                                                                                                                                                               |
+| ----------------------- | ------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `E_SETTINGS_UNDECLARED` | `validation` | A settings read named a key absent from the manifest `[settings]` declarations.                                          | Install a plugin version whose declarations match the running build. Only `query` is declared; other config entries are ignored.                                                                     |
+| `E_INCOMPATIBLE`        | `validation` | The running host does not satisfy `>=0.0.24`, or Plugin API is not `^1.0`.                                               | Upgrade Bitty or install a Palette release whose `[compat]` minimum covers your host.                                                                                                                |
+| `E_CAPABILITY_DENIED`   | `runtime`    | The `ui.overlay.focus` grant is missing, expired, or revoked.                                                            | Re-run `bitty plugin install <path>` and approve the grant; `bitty plugin list` shows what is recorded.                                                                                              |
+| `E_UI_ALREADY_CAPTURED` | `runtime`    | Another overlay already holds the single transient input-capture session.                                                | Close the other overlay, then toggle again. Palette degrades instead of throwing; the toggle returns a count with no visible overlay.                                                                |
+| `E_COMMAND_INVALID`     | `validation` | The highlighted command's args schema rejects the empty argument table, or its result schema rejects the returned value. | An args rejection shows `Needs arguments: <title>`; a result rejection shows `Invocation refused: E_COMMAND_INVALID`. The overlay stays open. Argument entry is the separate follow-up (bitty#2965). |
+| `E_COMMAND_GONE`        | `runtime`    | The command was registered but its owning generation is no longer active.                                                | The overlay shows `Invocation refused: E_COMMAND_GONE` and stays open. Reopen the palette after the owning plugin finishes reloading.                                                                |
+| `E_COMMAND_UNKNOWN`     | `runtime`    | The highlighted catalog row no longer names a live command.                                                              | The overlay shows `Invocation refused: E_COMMAND_UNKNOWN` and stays open. Refresh with `focus.changed` or reopen the palette.                                                                        |
+| `E_COMMAND_FAILED`      | `runtime`    | The command raised, was busy, or violated its result schema.                                                             | The overlay shows `Invocation refused: E_COMMAND_FAILED` and stays open. Check the owning plugin's diagnostics.                                                                                      |
 
 A toggle that returns a count but shows nothing means capture acquisition was
 refused: the grant is missing, another overlay holds the session, or the host
 predates the capture table. A visible `Command list unavailable` row means the
 host cannot serve `bitty.commands.list`; an empty catalog shows the `No
-entries` placeholder.
+entries` placeholder, and a query with no match shows `No matches`. An
+`Invocation unavailable` row means the host has no `bitty.commands.invoke`
+surface, so the palette can list commands but cannot run them.
 
 ## Status
 
 Pre-implementation ecosystem: the plugin package, manifest, and policy are
-implemented and tested headlessly; the Bitty host is still landing the Plugin
-API v1 overlay bridge. Nothing here is a compatibility promise beyond the
-manifest `[compat]` ranges.
+implemented and tested headlessly against the local mock host. The Bitty host
+surfaces this package uses (`bitty.commands.list`, `bitty.commands.invoke`,
+`bitty.ui.overlay.acquire`/`update`/`poll`/`release`, and the
+`overlay.input.available` observation) are landed, but nothing here is a
+compatibility promise beyond the manifest `[compat]` ranges.
 
 ## Layout
 
@@ -148,19 +167,35 @@ The plugin keeps the behavior and bounds of the former bundled palette; this
 package now defines them:
 
 - case-insensitive substring filtering over the active host command catalog
-  (`bitty.commands.list`, bounded by the host), at most `128` displayed
-  entries (`PALETTE_MAX_ENTRIES`);
+  (`bitty.commands.list`, bounded by the host) across the command id, title,
+  and owning plugin id;
+- at most `128` matched entries (`MAX_ENTRIES`) and at most `12` visible rows
+  per frame (`MAX_VISIBLE`); the selection window follows the highlight, and
+  the match-count row reports the bounded matches against the scanned catalog;
 - candidate input bounded to `1024` examined catalog rows per filter pass
   (`MAX_INPUT`); larger catalogs are cut at the bound and the cut is reported
-  through the filter stats (`filter.filter` returns `{ scanned, truncated }` as
-  its second value);
+  through the filter stats (`filter.filter_commands` returns
+  `{ scanned, matched, truncated }` as its second value);
 - a catalog the host cannot serve paints `Command list unavailable`, so a
-  broken source is never mistaken for an empty one;
-- the declared `query` setting (default `""`) narrows the catalog; it is read
-  through `bitty.settings.get` and fails closed to the empty query;
+  broken source is never mistaken for an empty one; a non-empty query with no
+  match paints `No matches`;
+- the declared `query` setting (default `""`) seeds the filter at open; live
+  typing replaces it for the session and Backspace widens it;
 - query truncated to `128` characters, display text truncated to the host
   overlay text bound `128` (`MAX_OVERLAY_TEXT_LEN`) at a UTF-8 code-point
   boundary;
+- captured input is drained only on the cold path: the host publishes
+  `overlay.input.available` while this capture owner has queued input, and the
+  palette calls `bitty.ui.overlay.poll`; no plugin callback runs on the input
+  hot path;
+- Up/Down move the highlight with wrap-around; `j`/`k` do the same while the
+  query is empty and become ordinary text once filtering starts; Enter invokes
+  the highlighted command through `bitty.commands.invoke`, and Escape closes;
+- a successful invocation closes the session with the `submitted` disposition;
+  a refusal keeps the overlay open with a typed row: an empty-args schema
+  rejection paints `Needs arguments: <title>` (the host validates before the
+  callee body runs), and every other refusal paints
+  `Invocation refused: <code>`;
 - overlay content composed as a single declarative `List` of `Text` rows
   (`Text`, `Row`, `Column`, `List` are the only Plugin API v1 node kinds);
 - every open acquires the focusable overlay plus transient input capture in
@@ -168,20 +203,19 @@ package now defines them:
   (`bitty.ui.overlay.acquire({ title = "Palette", placeholder = "Filter commands" })`);
   the Core surfaces only the capture owner's block, so the acquire is what
   makes the overlay visible;
-- the open scene is never empty: the title row plus the filtered command rows,
-  or the title plus a `No entries` placeholder row when the catalog is empty,
-  or `Command list unavailable` when the host cannot serve the catalog — a real
-  UI, not a bare pill;
-- closing ends the session (`bitty.ui.overlay.release(handle, "cancelled")`),
-  which destroys the surface; an involuntary session end (focus switch, idle
-  timeout, unload) observed through `overlay.released` resets the toggle state
-  so the next toggle re-opens;
-- host capture calls are `pcall`-guarded: a denied focus grant, a live foreign
-  session, or a host without the capture table degrades to command-only mode
-  (counts still returned), and a rejected session update keeps the last
-  successfully presented scene instead of throwing at the command caller or
-  the event dispatchers;
-- `toggle` returns the number of displayed entries (`0` when closing) and
+- the open scene is never empty: the title, live query, and match-count rows
+  plus the visible command rows, or a placeholder row when the catalog is
+  empty, unavailable, or unmatched — a real UI, not a bare pill;
+- closing ends the session (`bitty.ui.overlay.release(handle, "cancelled")` or
+  `"submitted"` after invocation), which destroys the surface; an involuntary
+  session end (focus switch, idle timeout, unload) observed through
+  `overlay.released` resets the toggle state so the next toggle re-opens;
+- host capture and invocation calls are `pcall`-guarded: a denied focus grant,
+  a live foreign session, or a host without the capture table degrades to
+  command-only mode (counts still returned), a rejected session update keeps
+  the last successfully presented scene, and a missing `bitty.commands.invoke`
+  paints `Invocation unavailable` instead of throwing;
+- `toggle` returns the number of matched entries (`0` when closing) and
   declares a closed empty-object `args_schema` plus an integer `result_schema`
   matching the returned count;
 - refresh on `focus.changed` while a session is held.
@@ -210,11 +244,17 @@ access, and release stays ungated so cleanup can never wedge input.
 
 ## Known gaps
 
-- **Interactive query input.** v1 has no text-input surface for overlays, and
-  this package does not yet drain the capture queue (`bitty.ui.overlay.poll`),
-  so the query is read from the declared `query` setting rather than typed live.
-  A picker-provider API is still draft/post-1.0; the host command catalog is the
-  entry source.
+- **Argument entry (bitty#2965).** The host command catalog serves
+  `{ plugin, id, qualified, title }` only, with no args schema, so the palette
+  cannot know before dispatch whether a command needs arguments. It invokes
+  with `{}`; the host validates the empty table before any callee code runs and
+  the palette reports `Needs arguments: <title>` on `E_COMMAND_INVALID`. A
+  dedicated argument editor is the separate follow-up task.
+- **No picker-provider API.** A picker-provider API is still draft/post-1.0;
+  the host command catalog is the entry source.
+- **`j`/`k` share the typing alphabet.** They navigate while the query is
+  empty and type once filtering starts, so a query cannot begin with `j` or
+  `k`. Up/Down remain unambiguous navigation keys.
 
 ## Development
 
@@ -242,5 +282,11 @@ the README Configuration table drifts from the manifest `[settings]`.
 Only `ui.overlay.focus` is requested: one focusable overlay plus the bounded
 transient input-capture session for one interaction. The plugin has no
 filesystem, process, network, clipboard, terminal-input, or persistent-state
-authority. It performs no I/O and spawns nothing. Report vulnerabilities through the process
-in the umbrella project's security policy rather than a public issue.
+authority. It performs no I/O and spawns nothing. Command invocation is
+host-mediated (`bitty.commands.invoke`): the palette never dispatches or
+executes plugin code itself, and the host keeps its deny-by-default
+registration, args-schema, and cross-VM containment checks. The
+`overlay.input.available` observation carries no input bytes; captured keys
+are drained by the owner through `bitty.ui.overlay.poll`. Report
+vulnerabilities through the process in the umbrella project's security policy
+rather than a public issue.

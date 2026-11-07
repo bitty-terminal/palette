@@ -8,6 +8,7 @@ local function run(context)
   -- the removed bundled Rust realization); the input bound is the
   -- palette-local untrusted-input policy.
   tap.equal(filter.MAX_ENTRIES, 128, "MAX_ENTRIES")
+  tap.equal(filter.MAX_VISIBLE, 12, "MAX_VISIBLE")
   tap.equal(filter.MAX_QUERY_CHARS, 128, "MAX_QUERY_CHARS")
   tap.equal(filter.MAX_TEXT_CHARS, 128, "MAX_TEXT_CHARS")
   tap.equal(filter.MAX_INPUT, 1024, "MAX_INPUT")
@@ -93,6 +94,86 @@ local function run(context)
   local long_entry = string.rep("y", 300)
   local truncated_match = filter.filter({ long_entry }, "")
   tap.equal(#truncated_match[1], filter.MAX_TEXT_CHARS, "matched text truncated")
+
+  -- Command-catalog filtering normalizes rows and matches id, title, and
+  -- owning plugin id case-insensitively.
+  local rows = {
+    {
+      plugin = "bitty-terminal.palette",
+      id = "toggle",
+      qualified = "bitty-terminal.palette:toggle",
+      title = "Palette: toggle",
+    },
+    {
+      plugin = "bitty-terminal.bar",
+      id = "focus",
+      qualified = "bitty-terminal.bar:focus",
+      title = "Unified Bar: focus workspace",
+    },
+    {
+      plugin = "bitty-terminal",
+      id = "close",
+      qualified = "bitty-terminal:close",
+      title = "Close panel",
+    },
+  }
+  local by_title, title_stats = filter.filter_commands(rows, "close")
+  tap.equal(#by_title, 1, "command filter matches the title")
+  tap.equal(by_title[1].qualified, "bitty-terminal:close", "title match keeps the qualified id")
+  tap.equal(title_stats.scanned, 3, "command filter scans every row")
+  tap.equal(title_stats.matched, 1, "command filter reports the match count")
+  tap.equal(title_stats.truncated, false, "command filter is not truncated")
+
+  local by_id = filter.filter_commands(rows, "focus")
+  tap.equal(#by_id, 1, "command filter matches the plugin-local id")
+  tap.equal(by_id[1].id, "focus", "id match keeps the row id")
+
+  local by_plugin = filter.filter_commands(rows, "BAR")
+  tap.equal(#by_plugin, 1, "command filter matches the plugin id case-insensitively")
+  tap.equal(by_plugin[1].plugin, "bitty-terminal.bar", "plugin match keeps the owner id")
+
+  local empty_query, empty_stats = filter.filter_commands(rows, "")
+  tap.equal(#empty_query, 3, "empty command query returns every row")
+  tap.equal(empty_stats.matched, 3, "empty command query counts every row")
+
+  local none, none_stats = filter.filter_commands(rows, "absent")
+  tap.equal(#none, 0, "absent query matches nothing")
+  tap.equal(none_stats.matched, 0, "absent query reports zero matches")
+
+  -- Non-table input fails closed; malformed rows are skipped; a plain string
+  -- row is still normalized for compatibility with a legacy catalog.
+  local nil_rows, nil_row_stats = filter.filter_commands(nil, "x")
+  tap.equal(#nil_rows, 0, "nil command rows yield an empty list")
+  tap.equal(nil_row_stats.scanned, 0, "nil command rows scan nothing")
+  local malformed = filter.filter_commands({ 42, true, { title = "" } }, "")
+  tap.equal(#malformed, 0, "malformed command rows are skipped")
+  local string_rows = filter.filter_commands({ "legacy row" }, "legacy")
+  tap.equal(#string_rows, 1, "string command rows are normalized")
+  tap.equal(string_rows[1].title, "legacy row", "string command row keeps its text")
+
+  -- The command output is bounded to MAX_ENTRIES while the match count keeps
+  -- counting inside the bounded scan.
+  local many_rows = {}
+  for index = 1, 300 do
+    many_rows[index] = {
+      plugin = "test",
+      id = "cmd" .. tostring(index),
+      qualified = "test:cmd" .. tostring(index),
+      title = "entry-" .. tostring(index),
+    }
+  end
+  local bounded_rows, bounded_row_stats = filter.filter_commands(many_rows, "")
+  tap.equal(#bounded_rows, filter.MAX_ENTRIES, "command output bounded to MAX_ENTRIES")
+  tap.equal(bounded_row_stats.matched, filter.MAX_ENTRIES, "command match count follows the output bound")
+  tap.equal(bounded_row_stats.scanned, 300, "command scan covers the whole bounded input")
+
+  -- Backspace removes one code point, including a multi-byte character.
+  tap.equal(filter.drop_last_char("abc"), "ab", "drop_last_char removes one ASCII character")
+  tap.equal(filter.drop_last_char("a"), "", "drop_last_char removes the last character")
+  tap.equal(filter.drop_last_char(""), "", "drop_last_char on empty text")
+  tap.equal(filter.drop_last_char("é"), "", "drop_last_char removes a multi-byte character")
+  tap.equal(filter.drop_last_char("aé"), "a", "drop_last_char keeps the leading character")
+  tap.equal(filter.truncate_query(string.rep("q", 200)), string.rep("q", filter.MAX_QUERY_CHARS), "query truncation bound")
 end
 
 return { run = run }
