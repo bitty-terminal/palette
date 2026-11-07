@@ -8,6 +8,13 @@ and the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- Interactive palette behavior (bitty#2964): live case-insensitive filtering
+  over command id, title, and owning plugin id; a bounded `12`-row selection
+  window with Up/Down and `j`/`k` navigation; Enter invocation through the
+  host-mediated `bitty.commands.invoke` surface; typed `Needs arguments` and
+  `Invocation refused` rows that keep the overlay open; and cold-path input
+  draining through `bitty.ui.overlay.poll` after the observation-only
+  `overlay.input.available` nudge.
 - Independent first-party package extracted from the bundled
   `bitty-terminal.palette` realization (OQ-053 split decision, `bitty`
   `CTX-0397`).

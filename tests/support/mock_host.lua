@@ -2,14 +2,15 @@
 --
 -- This is a test double, not a host implementation: it models only the
 -- accepted surface the palette uses — Plugin API v1 (ADR 0009 / Plugin API v1
--- Lua Surface RFC: commands, events, settings, `bitty.ui.mount`/`update`
--- scene validation) plus the accepted W-01 focusable-overlay capture surface
--- (`bitty.ui.overlay.acquire` in spec form / `update` / `release` on the
--- session block, gated by `ui.overlay.focus`; `overlay.released` observation
--- event) — with fail-closed capability gates, manifest-declared command/event
--- validation, and the v1 declarative scene validation (`Text`, `Row`,
--- `Column`, `List` only, depth `16`). It performs no I/O, spawns nothing,
--- and never touches the network or the filesystem.
+-- Lua Surface RFC: commands including host-mediated `invoke`, events,
+-- settings, `bitty.ui.mount`/`update` scene validation) plus the accepted
+-- W-01 focusable-overlay capture surface (`bitty.ui.overlay.acquire` in spec
+-- form / `update` / `poll` / `release` on the session block, gated by
+-- `ui.overlay.focus`; `overlay.released` and `overlay.input.available`
+-- observation events) — with fail-closed capability gates, manifest-declared
+-- command/event validation, and the v1 declarative scene validation (`Text`,
+-- `Row`, `Column`, `List` only, depth `16`). It performs no I/O, spawns
+-- nothing, and never touches the network or the filesystem.
 
 local MockHost = {}
 MockHost.__index = MockHost
@@ -114,6 +115,13 @@ function MockHost.new(options)
   -- surface at all.
   self.catalog = options.catalog or {}
   self.catalog_error = options.catalog_error
+  -- Host-mediated invocation fixtures (bitty CTX-1035): `invoke_handlers`
+  -- maps a qualified name to a Lua function run on dispatch; `invoke_errors`
+  -- maps a qualified name to a typed refusal raised before the handler. The
+  -- `invocations` array records every accepted call for exactly-once asserts.
+  self.invoke_handlers = options.invoke_handlers or {}
+  self.invoke_errors = options.invoke_errors or {}
+  self.invocations = {}
   self.commands = {}
   self.subscriptions = {}
   self.blocks = {}
@@ -122,6 +130,9 @@ function MockHost.new(options)
   -- `{ handle = <overlay block> }`, or nil when idle. Single-owner switch
   -- mirroring the Core `OverlayCapture` acquire/release contract.
   self.capture = nil
+  -- Queued captured input drained by `bitty.ui.overlay.poll`.
+  self.overlay_input = {}
+  self.overlay_sequence = 0
   self.handle_counter = 0
   self.sequence = 1
   self.bitty = self:build_bitty()
@@ -170,6 +181,40 @@ function MockHost:build_bitty()
           fail(self.catalog_error.class or "runtime", self.catalog_error.code or "E_NOT_IMPLEMENTED", "command catalog is unavailable")
         end
         return deepcopy(self.catalog)
+      end,
+      -- Host-mediated cross-VM invocation (bitty CTX-1035). The mock keeps
+      -- the observable contract the palette depends on: a typed refusal
+      -- raises before the fixture handler runs, every accepted call is
+      -- recorded once, and an unknown name fails closed.
+      invoke = function(qualified, args)
+        if type(qualified) ~= "string" then
+          fail("validation", "E_DEF_INVALID", "command name must be a string")
+        end
+        if string.match(qualified, "^[^:]+:[^:]+$") == nil then
+          fail("validation", "E_DEF_INVALID", "command name must be 'owner:command'")
+        end
+        self.invocations[#self.invocations + 1] = {
+          qualified = qualified,
+          args = deepcopy(args),
+        }
+        local refused = self.invoke_errors[qualified]
+        if refused ~= nil then
+          fail(
+            refused.class or "runtime",
+            refused.code or "E_COMMAND_FAILED",
+            refused.message or ("command refused: " .. qualified)
+          )
+        end
+        local handler = self.invoke_handlers[qualified]
+        if handler ~= nil then
+          return handler(args)
+        end
+        for _, row in ipairs(self.catalog) do
+          if type(row) == "table" and row.qualified == qualified then
+            return true
+          end
+        end
+        fail("runtime", "E_COMMAND_UNKNOWN", "command is not registered: " .. qualified)
       end,
     },
     events = {
@@ -307,6 +352,27 @@ function MockHost:build_bitty()
           self.updates = self.updates + 1
           return true
         end,
+        -- Owner-initiated drain of already-queued input (W-01). The mock
+        -- returns the accepted `{ status, seq, events, overflowed }` shape
+        -- and empties the queue; a foreign handle fails closed.
+        poll = function(handle)
+          self:assert_capability("bitty.ui.overlay.poll", "ui.overlay.focus")
+          if self.capture == nil or self.capture.handle ~= handle then
+            fail(
+              "runtime",
+              "E_UI_NOT_OWNER",
+              "no focusable-overlay input capture is held for this handle"
+            )
+          end
+          local events = self.overlay_input
+          self.overlay_input = {}
+          return {
+            status = "active",
+            seq = self.overlay_sequence,
+            events = deepcopy(events),
+            overflowed = false,
+          }
+        end,
         release = function(handle, reason)
           if reason ~= nil and reason ~= "submitted" and reason ~= "cancelled" then
             fail(
@@ -318,6 +384,7 @@ function MockHost:build_bitty()
           if self.capture ~= nil and self.capture.handle == handle then
             self.capture = nil
             self.blocks[handle] = nil
+            self.overlay_input = {}
             return true
           end
           return false
@@ -360,7 +427,35 @@ function MockHost:revoke_overlay()
   if self.capture ~= nil then
     self.blocks[self.capture.handle] = nil
     self.capture = nil
+    self.overlay_input = {}
   end
+end
+
+-- Enqueue one captured input event, mirroring the Core input path. `kind` is
+-- the decided tag (`key`, `text`, ...), `text` the bounded payload, and
+-- `data` the optional modified-key chord table.
+function MockHost:push_input(kind, text, data)
+  self.overlay_sequence = self.overlay_sequence + 1
+  self.overlay_input[#self.overlay_input + 1] = {
+    seq = self.overlay_sequence,
+    type = kind,
+    text = text,
+    data = data,
+  }
+  return true
+end
+
+-- Deliver the `overlay.input.available` cold-path nudge the host publishes
+-- while the capture owner has undrained queued input.
+function MockHost:nudge_input()
+  return self:publish("overlay.input.available", {
+    owner = self.plugin_id,
+    queued = #self.overlay_input,
+  })
+end
+
+function MockHost:queued_input_len()
+  return #self.overlay_input
 end
 
 -- The session block of the live capture owner (the block the Core would

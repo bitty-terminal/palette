@@ -28,6 +28,11 @@
   persistent-state authority; no install-time code execution. A wider request
   needs an explicitly scoped task and a reviewed security note; never widen
   silently.
+- Input and invocation stay host-mediated: captured keys are drained only
+  through `bitty.ui.overlay.poll` after the observation-only
+  `overlay.input.available` nudge, and Enter runs the highlighted command
+  through `bitty.commands.invoke`. The palette never re-implements command
+  dispatch or registers a callback on the input hot path.
 - Origin: this package is the independent first-party realization created by
   the OQ-053 bundled-plugin split decision ([bitty](https://github.com/bitty-terminal/bitty) `CTX-0397`). The accepted
   W-01 overlay-input-capture contract (bitty `bitty-terminal/bitty#1971`)

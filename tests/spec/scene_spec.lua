@@ -40,6 +40,59 @@ local function run(context)
     "unavailable source paints its own note"
   )
   tap.ok(scene.UNAVAILABLE_NOTE ~= scene.EMPTY_NOTE, "unavailable and empty notes differ")
+
+  -- The interactive view adds the live query and match-count header, then the
+  -- visible rows.
+  local view = scene.view({
+    rows = { "> one  test:one", "  two  test:two" },
+    query = "o",
+    matched = 2,
+    total = 5,
+  })
+  tap.equal(view.kind, "List", "view node kind")
+  tap.equal(view.children[1].text, scene.TITLE, "view title")
+  tap.equal(view.children[2].text, "> o", "view paints the live query")
+  tap.equal(view.children[3].text, "2 of 5 commands", "view paints the match count")
+  tap.equal(view.children[4].text, "> one  test:one", "view paints the selected row")
+  tap.equal(view.children[5].text, "  two  test:two", "view paints the unselected row")
+  for _, child in ipairs(view.children) do
+    tap.equal(child.kind, "Text", "view uses Text rows only")
+  end
+
+  -- Empty query uses the placeholder hint; a typed note row appears between
+  -- the header and the rows.
+  local placeholder = scene.view({ rows = {}, query = "", matched = 0, total = 0 })
+  tap.equal(placeholder.children[2].text, "> " .. scene.PLACEHOLDER, "empty query placeholder")
+  local noted = scene.view({
+    rows = { "> one  test:one" },
+    query = "o",
+    matched = 1,
+    total = 1,
+    note = scene.NEEDS_ARGS_NOTE .. ": one",
+  })
+  tap.equal(noted.children[4].text, scene.NEEDS_ARGS_NOTE .. ": one", "typed note row")
+  tap.equal(noted.children[5].text, "> one  test:one", "rows follow the note row")
+
+  -- A no-match view uses its own placeholder instead of the empty-catalog
+  -- note.
+  local no_match = scene.view({
+    rows = {},
+    query = "zzz",
+    matched = 0,
+    total = 3,
+    empty_note = scene.NO_MATCH_NOTE,
+  })
+  tap.equal(no_match.children[4].text, scene.NO_MATCH_NOTE, "no-match placeholder")
+  tap.ok(scene.NO_MATCH_NOTE ~= scene.EMPTY_NOTE, "no-match and empty notes differ")
+
+  -- Every painted row respects the overlay text bound.
+  local long_row = string.rep("x", 300)
+  local truncated = scene.view({ rows = { long_row }, query = "", matched = 1, total = 1 })
+  tap.equal(#truncated.children[4].text, 128, "view truncates long rows")
+
+  -- The selection marker and qualified id are part of the row text.
+  tap.equal(scene.row_text("Title", "owner:id", true), "> Title  owner:id", "selected row text")
+  tap.equal(scene.row_text("Title", "owner:id", false), "  Title  owner:id", "idle row text")
 end
 
 return { run = run }

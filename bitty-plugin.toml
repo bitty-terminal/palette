@@ -42,16 +42,18 @@ plugin-api = "^1.0"
 ui.overlay.focus = true
 
 [settings]
-# Static filter applied to the host command catalog. v1 has no live text-input
-# surface for overlays, so the palette cannot type-filter yet; the key is
-# declared anyway because `bitty.settings.get` fails closed
-# (`E_SETTINGS_UNDECLARED`) for undeclared keys, and an empty string lists the
-# whole catalog (bitty CTX-1195).
+# Initial filter applied when the overlay opens. Live typing replaces it for
+# the session; the key remains the activation-time seed and is declared because
+# `bitty.settings.get` fails closed (`E_SETTINGS_UNDECLARED`) for undeclared
+# keys. An empty string lists the whole catalog (bitty CTX-1195).
 query = { type = "string", default = "" }
 
 [lazy]
 # Static triggers let the host register the plugin without creating a VM.
 # Commands are plugin-qualified: `<plugin-id>:<resource>`.
 commands = ["bitty-terminal.palette:toggle"]
-# Events the plugin subscribes to during activation.
-events = ["focus.changed", "overlay.released"]
+# Events the plugin subscribes to during activation. `overlay.input.available`
+# is the observation-only cold-path nudge (no input bytes, no interception):
+# while this plugin owns the capture session it drains queued keys through
+# `bitty.ui.overlay.poll` and repaints.
+events = ["focus.changed", "overlay.released", "overlay.input.available"]

@@ -1,14 +1,16 @@
 --- Bitty Plugin API v1 LuaLS definitions.
---- GENERATED FILE - DO NOT EDIT, except the trailing hand-maintained
---- amendment blocks (W-01 overlay capture and `commands.list`).
+--- GENERATED FILE - DO NOT EDIT, except the hand-maintained amendment
+--- blocks (W-01 overlay capture, `commands.list`, and `commands.invoke`).
 --- Source: surface/bitty-plugin-api-v1.json
 --- Contract: bitty-docs:docs/decisions/adrs/ADR-0009-plugin-api-v1-lua-surface.md + bitty-docs:docs/specifications/plugin-api-v1-lua-surface-rfc.md
 --- W-01 amendment (hand-maintained): the accepted overlay-input-capture
 --- contract (bitty-docs:docs/development/overlay-input-capture-contract.md,
---- capability `ui.overlay.focus`) is not in the SDK v1 surface yet, so the
---- `bitty.ui.overlay.*` spellings and the `overlay.released` event below are
---- vendored here with their contract source until the SDK projection covers
---- them. Regenerate: bun scripts/generate-lua-defs.ts --write
+--- capability `ui.overlay.focus`) is not fully projected by the SDK v1
+--- surface, so the `bitty.ui.overlay.*` spellings (including the
+--- owner-initiated `poll` drain) and the `overlay.released` /
+--- `overlay.input.available` events below are vendored here with their
+--- contract and host sources until the SDK projection covers them.
+--- Regenerate: bun scripts/generate-lua-defs.ts --write
 --- Verify: just lua-defs-check
 ---@meta bitty
 
@@ -61,8 +63,25 @@ local BittyCommandsNamespace = {}
 ---@return BittyCommandHandle
 function BittyCommandsNamespace.register(def) end
 
+--- HAND-MAINTAINED AMENDMENT: bitty.commands.invoke (0.0.24, bitty CTX-1035).
+---
+--- Host-mediated, deny-by-default invocation of one active command by its
+--- qualified `owner:command` name (bitty `crates/bitty-lua/src/host.rs`
+--- `commands.invoke` -> `HostServices::command_invoke`; implementation in
+--- `bitty-runtime` `PluginServices::command_invoke`). The host validates args
+--- against the callee's effective args schema before any callee code runs,
+--- contains cross-VM failures, and re-checks the result schema. Refusals raise
+--- a typed `{ class, code, message }` table: `E_COMMAND_UNKNOWN`,
+--- `E_COMMAND_GONE`, `E_COMMAND_INVALID`, or `E_COMMAND_FAILED`.
+--- The generated SDK surface still omits the spelling; the palette invokes
+--- through this host surface rather than re-implementing dispatch.
+---@param qualified string Fully qualified `<plugin-id>:<id>` command name.
+---@param args? table Plain args table; nil and `{}` both mean "no arguments".
+---@return any
+function BittyCommandsNamespace.invoke(qualified, args) end
+
 --- Closed v1 event-name set; subscribing to an undeclared or unknown name is a registration error.
----@alias BittyEventName "plugin.activated"|"plugin.suspended"|"plugin.disposed"|"handler.violation"|"terminal.opened"|"terminal.closed"|"terminal.title-changed"|"terminal.cwd-changed"|"terminal.bell"|"focus.changed"|"selection.changed"|"process.exited"|"config.reloaded"|"intercept.command-dispatch"|"intercept.terminal-spawn"|"intercept.paste"|"intercept.open-url"|"overlay.released"
+---@alias BittyEventName "plugin.activated"|"plugin.suspended"|"plugin.disposed"|"handler.violation"|"terminal.opened"|"terminal.closed"|"terminal.title-changed"|"terminal.cwd-changed"|"terminal.bell"|"focus.changed"|"selection.changed"|"process.exited"|"config.reloaded"|"intercept.command-dispatch"|"intercept.terminal-spawn"|"intercept.paste"|"intercept.open-url"|"overlay.released"|"overlay.input.available"
 
 --- Event payload with no fields for lifecycle, signal, and coalescable observation events.
 ---@class BittyEmptyPayload
@@ -489,6 +508,31 @@ function BittyOverlayNamespace.acquire(spec) end
 ---@return boolean
 function BittyOverlayNamespace.update(handle, component) end
 
+--- One queued input event with a decided type tag (W-01). `key` events carry
+--- the produced text or the host's `key:<Name>` fallback; a modified key also
+--- carries `data = { key, ctrl, alt, shift, super }`.
+---@class BittyOverlayEvent
+---@field seq integer Monotonic event sequence within the session.
+---@field type "key"|"text"|"pointer"|"wheel"|"paste" Decided input-event tag.
+---@field text string Bounded UTF-8 payload.
+---@field data? table Modified-key chord identity.
+
+--- Owner-initiated drain of already-queued input events; never a Core-driven
+--- callback and never on the input hot path.
+---@class BittyOverlayPollResult
+---@field status "active"|"released" Whether the session holds capture.
+---@field seq integer Monotonic sequence of the last event delivered to this owner.
+---@field events BittyOverlayEvent[] Input events in order; empty when nothing new.
+---@field overflowed boolean Sticky flag; true once queue overflow dropped an older event.
+---@field reason? string Present only with "released".
+
+--- Drains the session queue as an owner-initiated synchronous read of
+--- already-queued events; fails with `E_UI_NOT_OWNER` for a foreign or
+--- released handle. Capabilities: ui.overlay.focus.
+---@param handle BittyBlockHandle
+---@return BittyOverlayPollResult
+function BittyOverlayNamespace.poll(handle) end
+
 --- Ends a session the caller owns; idempotent. The optional reason is an
 --- owner-supplied disposition of "submitted" or "cancelled" and defaults to
 --- "released". Release is ungated so cleanup can never wedge input.
@@ -501,6 +545,13 @@ function BittyOverlayNamespace.release(handle, reason) end
 ---@class BittyOverlayReleasedPayload
 ---@field owner string Capture owner at release time.
 ---@field reason string Terminal release reason.
+
+--- overlay.input.available payload: a coalescable level-nudge observation
+--- carrying no input bytes, published while the capture owner has undrained
+--- queued input (bitty CTX-1170). Observation only, never intercepted.
+---@class BittyInputAvailablePayload
+---@field owner string Owning plugin id with a live capture session.
+---@field queued integer Depth of undrained queued input for the owner.
 
 --- HAND-MAINTAINED AMENDMENT: bitty.commands.list (0.0.24, bitty CTX-1035).
 ---
