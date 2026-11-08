@@ -122,6 +122,7 @@ function MockHost.new(options)
   self.invoke_handlers = options.invoke_handlers or {}
   self.invoke_errors = options.invoke_errors or {}
   self.invocations = {}
+  self.notifications = {}
   self.commands = {}
   self.subscriptions = {}
   self.blocks = {}
@@ -193,10 +194,11 @@ function MockHost:build_bitty()
         if string.match(qualified, "^[^:]+:[^:]+$") == nil then
           fail("validation", "E_DEF_INVALID", "command name must be 'owner:command'")
         end
-        self.invocations[#self.invocations + 1] = {
+        local record = {
           qualified = qualified,
           args = deepcopy(args),
         }
+        self.invocations[#self.invocations + 1] = record
         local refused = self.invoke_errors[qualified]
         if refused ~= nil then
           fail(
@@ -207,7 +209,9 @@ function MockHost:build_bitty()
         end
         local handler = self.invoke_handlers[qualified]
         if handler ~= nil then
-          return handler(args)
+          local result = handler(args)
+          record.result = result
+          return result
         end
         for _, row in ipairs(self.catalog) do
           if type(row) == "table" and row.qualified == qualified then
@@ -465,6 +469,99 @@ function MockHost:session_block()
     return nil
   end
   return self.blocks[self.capture.handle]
+end
+
+-- Build a foreign-plugin `bitty` bridge bound to this MockHost (palette#31,
+-- devtools#10 item 4). Commands registered by the foreign plugin populate
+-- `self.catalog` and `self.invoke_handlers` so the palette discovers them via
+-- `bitty.commands.list` and dispatches them via `bitty.commands.invoke`;
+-- notifications emitted by the foreign plugin are recorded on
+-- `self.notifications`.
+function MockHost:foreign_bitty(foreign_id)
+  local host = self
+  local traces = {}
+  local next_trace = 0
+  local foreign = nil
+  foreign = {
+    api_version = "1.0.0",
+    commands = {
+      register = function(def)
+        if type(def) ~= "table" or type(def.id) ~= "string" then
+          fail("validation", "E_DEF_INVALID", "command definition is invalid")
+        end
+        if def.title == nil or def.title == "" or type(def.run) ~= "function" then
+          fail("validation", "E_DEF_INVALID", "command requires title and run")
+        end
+        local qualified = foreign_id .. ":" .. def.id
+        host.catalog[#host.catalog + 1] = {
+          plugin = foreign_id,
+          id = def.id,
+          qualified = qualified,
+          title = def.title,
+          description = def.description,
+        }
+        host.invoke_handlers[qualified] = function(args)
+          local caller_bitty = _G.bitty
+          _G.bitty = foreign
+          local ok, result = pcall(def.run, args)
+          _G.bitty = caller_bitty
+          if not ok then
+            error(result, 0)
+          end
+          return result
+        end
+        return host:next_handle()
+      end,
+    },
+    notify = {
+      show = function(spec)
+        if type(spec) ~= "table" or type(spec.body) ~= "string" then
+          fail("validation", "E_DEF_INVALID", "notification requires a body string")
+        end
+        host.notifications[#host.notifications + 1] = deepcopy(spec)
+        return true
+      end,
+    },
+    debug = {
+      inspect = function(target)
+        if target == "plugins" then
+          return {
+            { id = host.plugin_id, version = "0.0.1", state = "active", generation = 1 },
+            { id = foreign_id, version = "0.0.1", state = "active", generation = 1 },
+          }
+        end
+        if target == "commands" then
+          return deepcopy(host.catalog)
+        end
+        if target == "events" then
+          return {
+            { plugin = host.plugin_id, kind = "focus.changed" },
+            { plugin = host.plugin_id, kind = "overlay.released" },
+            { plugin = host.plugin_id, kind = "overlay.input.available" },
+          }
+        end
+        if target == "grants" then
+          return { "debug.inspect", "debug.trace", "platform.notify" }
+        end
+        fail("validation", "E_DEF_INVALID", "unknown inspect target: " .. tostring(target))
+      end,
+      trace = function(opts)
+        if type(opts) == "table" and opts.enabled == false then
+          if opts.handle ~= nil then
+            traces[opts.handle] = nil
+          end
+          return true
+        end
+        next_trace = next_trace + 1
+        traces[next_trace] = { records = {}, dropped = 0 }
+        return next_trace
+      end,
+      trace_get = function(handle)
+        return traces[handle]
+      end,
+    },
+  }
+  return foreign
 end
 
 return MockHost
