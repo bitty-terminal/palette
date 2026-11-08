@@ -533,7 +533,12 @@ end)
 -- active while ours is, a foreign end while we are closed is a no-op on
 -- already-false state, and our own voluntary close observes this event after
 -- the release above idempotently.
-bitty.events.subscribe("overlay.released", function(_event)
+bitty.events.subscribe("overlay.released", function(event)
+  local payload = type(event) == "table" and event.payload or nil
+  local owner = type(payload) == "table" and rawget(payload, "owner") or nil
+  if type(owner) == "string" and owner ~= "" and owner ~= "bitty-terminal.palette" then
+    return
+  end
   toggled = false
   session = nil
   note = nil

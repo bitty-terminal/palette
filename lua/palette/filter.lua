@@ -30,21 +30,30 @@ M.MAX_VISIBLE = 12
 -- stats (`truncated`), so callers never silently lose input either.
 M.MAX_INPUT = 1024
 
+-- Count Unicode code points when `text` is valid UTF-8, or nil otherwise.
+local function valid_utf8_len(text)
+  if utf8 ~= nil and utf8.len ~= nil then
+    local ok, count = pcall(utf8.len, text)
+    if ok and type(count) == "number" then
+      return count
+    end
+  end
+  return nil
+end
+
 -- Count Unicode code points. The restricted plugin VM retains `utf8`; the
 -- byte scan is a fallback that never splits a code point.
 local function char_count(text)
-  if utf8 ~= nil and utf8.len ~= nil then
-    local count = utf8.len(text)
-    if type(count) == "number" then
-      return count
-    end
+  local valid_count = valid_utf8_len(text)
+  if valid_count ~= nil then
+    return valid_count
   end
   local count = 0
   local index = 1
   local length = #text
   while index <= length do
     local byte = string.byte(text, index)
-    if byte < 0x80 or byte >= 0xC0 then
+    if index == 1 or byte < 0x80 or byte >= 0xC0 then
       count = count + 1
     end
     index = index + 1
@@ -57,21 +66,26 @@ local function char_slice(text, max)
   if max <= 0 then
     return ""
   end
-  if char_count(text) <= max then
-    return text
-  end
-  if utf8 ~= nil and utf8.offset ~= nil then
-    local offset = utf8.offset(text, max + 1)
-    if offset ~= nil then
-      return string.sub(text, 1, offset - 1)
+  local valid_count = valid_utf8_len(text)
+  if valid_count ~= nil then
+    if valid_count <= max then
+      return text
     end
+    if utf8 ~= nil and utf8.offset ~= nil then
+      local ok, offset = pcall(utf8.offset, text, max + 1)
+      if ok and offset ~= nil then
+        return string.sub(text, 1, offset - 1)
+      end
+    end
+  elseif char_count(text) <= max then
+    return text
   end
   local count = 0
   local index = 1
   local length = #text
   while index <= length do
     local byte = string.byte(text, index)
-    if byte < 0x80 or byte >= 0xC0 then
+    if index == 1 or byte < 0x80 or byte >= 0xC0 then
       count = count + 1
       if count > max then
         return string.sub(text, 1, index - 1)
@@ -100,15 +114,19 @@ function M.drop_last_char(text)
   if type(text) ~= "string" or text == "" then
     return ""
   end
-  local count = char_count(text)
-  if count <= 1 then
-    return ""
-  end
-  if utf8 ~= nil and utf8.offset ~= nil then
-    local offset = utf8.offset(text, count)
-    if offset ~= nil then
-      return string.sub(text, 1, offset - 1)
+  local valid_count = valid_utf8_len(text)
+  if valid_count ~= nil then
+    if valid_count <= 1 then
+      return ""
     end
+    if utf8 ~= nil and utf8.offset ~= nil then
+      local ok, offset = pcall(utf8.offset, text, valid_count)
+      if ok and offset ~= nil then
+        return string.sub(text, 1, offset - 1)
+      end
+    end
+  elseif char_count(text) <= 1 then
+    return ""
   end
   local index = #text
   while index > 1 do
