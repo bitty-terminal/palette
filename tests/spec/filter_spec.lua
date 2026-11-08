@@ -178,6 +178,16 @@ local function run(context)
   tap.equal(filter.drop_last_char("é"), "", "drop_last_char removes a multi-byte character")
   tap.equal(filter.drop_last_char("aé"), "a", "drop_last_char keeps the leading character")
   tap.equal(filter.truncate_query(string.rep("q", 200)), string.rep("q", filter.MAX_QUERY_CHARS), "query truncation bound")
+
+  -- Invalid UTF-8 starting with a continuation byte falls back to byte scanning
+  -- without throwing `initial position is a continuation byte` from utf8.offset (palette#45).
+  local leading_cont = "\x80" .. string.rep("a", 130)
+  local ok_slice, sliced_cont = pcall(filter.truncate_text, leading_cont)
+  tap.equal(ok_slice, true, "truncate_text survives leading UTF-8 continuation byte")
+  tap.equal(#sliced_cont, filter.MAX_TEXT_CHARS, "truncate_text bounds leading continuation byte input")
+  local ok_drop, dropped_cont = pcall(filter.drop_last_char, "\x80ab")
+  tap.equal(ok_drop, true, "drop_last_char survives leading UTF-8 continuation byte")
+  tap.equal(dropped_cont, "\x80a", "drop_last_char removes trailing byte after leading continuation byte")
 end
 
 return { run = run }
