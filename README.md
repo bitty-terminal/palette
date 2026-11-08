@@ -27,6 +27,14 @@ needs arguments). The overlay is also released when toggled closed or when
 input capture ends. If the host cannot serve the catalog, the overlay says so
 instead of showing an empty list.
 
+Open it with `bitty-terminal.palette:toggle`; the plugin installs no default
+chord. For example, bind the command to `ctrl+p` as shown under
+[Keybindings](#keybindings), press it, type a fragment of a command title (for
+example `dash` when Dashboard is installed) to filter the catalog, and press
+`Enter`: the highlighted command runs through the host and the overlay closes.
+If the highlighted command needs arguments, the overlay stays open with
+`Needs arguments: <title>`.
+
 ## Install
 
 Prerequisites:
@@ -108,7 +116,7 @@ return {
   keymaps = {
     {
       chord = "ctrl+p",
-      action = "bitty-terminal.palette:toggle",
+      action = "command:bitty-terminal.palette:toggle",
       context = "global",
     },
   },
