@@ -155,10 +155,11 @@ function M.normalize_row(row)
   return { id = id, title = title, plugin = plugin, qualified = qualified }
 end
 
--- Case-insensitive substring match over the row id, title, and owning plugin
--- id. The query is already lowercased and truncated by the caller.
+-- Case-insensitive substring match over the row id, title, owning plugin id,
+-- and qualified command id. The query is already lowercased and truncated by
+-- the caller.
 local function row_matches(entry, needle)
-  local fields = { entry.id, entry.title, entry.plugin }
+  local fields = { entry.id, entry.title, entry.plugin, entry.qualified }
   for _, field in ipairs(fields) do
     if type(field) == "string" then
       -- Bound the per-field match work to the same overlay text ceiling the

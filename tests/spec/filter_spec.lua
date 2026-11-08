@@ -132,6 +132,10 @@ local function run(context)
   tap.equal(#by_plugin, 1, "command filter matches the plugin id case-insensitively")
   tap.equal(by_plugin[1].plugin, "bitty-terminal.bar", "plugin match keeps the owner id")
 
+  local by_qualified = filter.filter_commands(rows, "bar:focus")
+  tap.equal(#by_qualified, 1, "command filter matches the qualified command id")
+  tap.equal(by_qualified[1].qualified, "bitty-terminal.bar:focus", "qualified match keeps the row")
+
   local empty_query, empty_stats = filter.filter_commands(rows, "")
   tap.equal(#empty_query, 3, "empty command query returns every row")
   tap.equal(empty_stats.matched, 3, "empty command query counts every row")

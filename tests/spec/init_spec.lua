@@ -569,6 +569,101 @@ local function run(context)
     tap.equal(host:run("toggle", {}), 2, "stale session is reset and the next toggle opens")
     tap.ok(host.capture ~= nil, "re-open re-acquires input capture")
   end
+
+  -- Downstream consumer test (palette#31, devtools#10 item 4): palette
+  -- discovers all seven `bitty-featured.devtools` commands and runs each one
+  -- through the host invocation seam with empty args, proving cross-plugin
+  -- consumption without a live host. Loads the sibling `devtools` checkout when
+  -- present in the workspace and falls back to the pinned 7-command contract in
+  -- single-repo CI.
+  do
+    local DEVTOOLS_ID = "bitty-featured.devtools"
+    local DEVTOOLS_COMMANDS = {
+      { id = "plugins", title = "DevTools: list plugins" },
+      { id = "commands", title = "DevTools: list commands" },
+      { id = "events", title = "DevTools: list event subscriptions" },
+      { id = "grants", title = "DevTools: show own grants" },
+      { id = "trace-start", title = "DevTools: start event trace" },
+      { id = "trace-dump", title = "DevTools: dump event trace" },
+      { id = "trace-stop", title = "DevTools: stop event trace" },
+    }
+    local NOTIFY_MAX_CHARS = 256
+
+    local host = with_grants({ catalog = {} })
+    local foreign_bitty = host:foreign_bitty(DEVTOOLS_ID)
+
+    local devtools_root = nil
+    for _, rel in ipairs({ "/../devtools", "/../../../devtools" }) do
+      local candidate = (context.root or ".") .. rel
+      local probe = io.open(candidate .. "/lua/devtools/init.lua", "r")
+      if probe ~= nil then
+        probe:close()
+        devtools_root = candidate
+        break
+      end
+    end
+
+    if devtools_root ~= nil then
+      local saved_path = package.path
+      local saved_bitty = _G.bitty
+      package.path = devtools_root .. "/lua/?.lua;" .. package.path
+      package.loaded["devtools.init"] = nil
+      package.loaded["devtools.format"] = nil
+      package.loaded["devtools.trace"] = nil
+      _G.bitty = foreign_bitty
+      require("devtools.init")
+      _G.bitty = saved_bitty
+      package.path = saved_path
+    else
+      for _, spec in ipairs(DEVTOOLS_COMMANDS) do
+        foreign_bitty.commands.register({
+          id = spec.id,
+          title = spec.title,
+          description = spec.title,
+          run = function(_args)
+            local summary = spec.title .. " (ok)"
+            foreign_bitty.notify.show({
+              title = "Bitty DevTools",
+              body = summary,
+              urgency = "low",
+            })
+            return summary
+          end,
+        })
+      end
+    end
+
+    activate(host)
+    tap.equal(#host.catalog, #DEVTOOLS_COMMANDS, "all seven devtools commands registered in catalog")
+
+    for index, spec in ipairs(DEVTOOLS_COMMANDS) do
+      local qualified = DEVTOOLS_ID .. ":" .. spec.id
+      tap.equal(
+        host:run("toggle", {}),
+        #DEVTOOLS_COMMANDS,
+        "palette opens with all seven devtools commands before " .. spec.id
+      )
+      type_text(host, qualified)
+      tap.equal(#command_rows(host), 1, "query narrows palette to " .. qualified)
+      tap.contains(selected_row(host), spec.title, "selected row shows title for " .. spec.id)
+      tap.contains(selected_row(host), qualified, "selected row shows qualified id for " .. spec.id)
+
+      press(host, "key:Enter")
+      tap.equal(#host.invocations, index, "Enter invokes " .. qualified .. " once")
+      local call = host.invocations[index]
+      tap.equal(call.qualified, qualified, "invoked qualified id matches " .. qualified)
+      tap.equal(type(call.args), "table", "empty args table passed to " .. qualified)
+      tap.equal(next(call.args), nil, "args table is empty for " .. qualified)
+      tap.equal(type(call.result), "string", qualified .. " returns a string result")
+      tap.ok(#call.result > 0, qualified .. " returns non-empty text")
+      tap.equal(#host.notifications, index, qualified .. " emits exactly one notification")
+      local note = host.notifications[index]
+      tap.not_contains(note.body, "\n", qualified .. " notification body is single-line")
+      tap.le(utf8.len(note.body), NOTIFY_MAX_CHARS, qualified .. " notification fits chrome limit")
+      tap.equal(host.capture, nil, "palette closes on successful " .. qualified .. " invocation")
+      tap.equal(#host.blocks, 0, "palette surface destroyed after " .. qualified)
+    end
+  end
 end
 
 return { run = run }
